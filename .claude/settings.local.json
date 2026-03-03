@@ -40,7 +40,8 @@
       "Bash(grep:*)",
       "Bash(pnpm build:backend:*)",
       "Bash(pnpm dev:backend:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(dir /b \"C:\\Users\\salap\\.gemini\\antigravity\\playground\\kinetic-constellation\\apps\\frontend\\src\")"
     ],
     "deny": [],
     "ask": []

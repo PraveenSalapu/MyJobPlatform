@@ -234,42 +234,21 @@ export const setActiveProfileId = async (id: string, userId?: string): Promise<U
     } catch (e: any) {
         console.error('Failed to set active profile via API', e);
 
-        // Self-Healing: If profile 404s (e.g. DB reset but exists in cache), recreate it!
-        if (e.response?.status === 404 || e.message?.includes('404') || e.message?.includes('not found')) {
-            console.log('[Storage] Profile 404 during activation, attempting recovery from cache...');
+        // Handle 404 - cache is stale, clear it and re-fetch from DB
+        const errorMsg = e.message?.toLowerCase() || '';
+        if (e.response?.status === 404 || errorMsg.includes('404') || errorMsg.includes('not found')) {
+            console.log('[Storage] Profile 404 during activation - cache is stale, fetching fresh from DB...');
+            invalidateCache(userId);
 
-            const cached = getCachedProfiles(userId);
-            const staleProfile = cached?.profiles.find(p => p.id === id);
+            // Fetch fresh profiles from DB and return the first active one
+            const freshProfiles = await getAllProfiles(userId);
+            const activeProfile = freshProfiles.find(p => p.isActive) || freshProfiles[0];
 
-            if (staleProfile) {
-                try {
-                    // Re-create the profile on the server
-                    const newProfile = await api.createProfile(staleProfile.name, staleProfile.data);
-                    console.log('[Storage] Recovery successful, new ID:', newProfile.id);
-
-                    // Update cache: remove old stale ID, add new fresh ID, set active
-                    if (cached) {
-                        // Remove stale
-                        cached.profiles = cached.profiles.filter(p => p.id !== id);
-
-                        // Add new (mapped)
-                        const freshUserProfile = apiToUserProfile(newProfile);
-                        freshUserProfile.isActive = true; // Ensure active
-                        cached.profiles.push(freshUserProfile);
-
-                        // Ensure only one active
-                        cached.profiles = cached.profiles.map(p => ({
-                            ...p,
-                            isActive: p.id === freshUserProfile.id
-                        }));
-
-                        updateCache(cached.profiles, userId);
-                        return freshUserProfile;
-                    }
-                } catch (createErr) {
-                    console.error('[Storage] failed to recover stale profile:', createErr);
-                }
+            if (activeProfile) {
+                return activeProfile;
             }
+            // No profiles exist
+            throw new Error('No profiles found. Please create a profile first.');
         }
 
         throw e;
@@ -343,29 +322,25 @@ export const saveResumeToProfile = async (resume: Resume, userId?: string): Prom
     } catch (error: any) {
         console.error('[Storage] Save failed:', error);
 
-        // Self-Healing: Handle 404 (Not Found)
-        if (error.response?.status === 404 || error.message?.includes('404')) {
-            console.log('[Storage] Profile 404, recovering by creating new profile...');
-            try {
-                const newProfile = await api.createProfile(profileName, data);
-                console.log('[Storage] Recovery successful, new ID:', newProfile.id);
+        // Handle 404 (Not Found) - cache is stale, clear it and re-fetch from DB
+        const errorMsg = error.message?.toLowerCase() || '';
+        if (error.response?.status === 404 || errorMsg.includes('404') || errorMsg.includes('not found')) {
+            console.log('[Storage] Profile 404 - cache is stale, invalidating and fetching fresh from DB...');
+            invalidateCache(userId);
 
-                // Update Cache with new profile
-                const cached = getCachedProfiles(userId);
-                if (cached) {
-                    cached.profiles.push(apiToUserProfile(newProfile));
-                    // Mark others inactive? Logic for active profile implies yes.
-                    cached.profiles.forEach(p => p.isActive = (p.id === newProfile.id));
-                    updateCache(cached.profiles, userId);
-                } else {
-                    invalidateCache(userId);
-                }
+            // Fetch fresh profiles from DB
+            const freshProfiles = await getAllProfiles(userId);
+            const activeProfile = freshProfiles.find(p => p.isActive) || freshProfiles[0];
 
-                // Return updated resume with NEW ID
-                return { ...data, id: newProfile.id };
-            } catch (createErr) {
-                console.error('[Storage] Recovery failed:', createErr);
-                throw createErr;
+            if (activeProfile) {
+                // Retry save with the correct active profile ID
+                console.log('[Storage] Retrying save with fresh profile ID:', activeProfile.id);
+                const correctedData = { ...data, id: activeProfile.id };
+                return saveResumeToProfile(correctedData, userId);
+            } else {
+                // No profiles exist in DB - this is a real error, user needs to create one
+                console.error('[Storage] No profiles found in DB for user');
+                throw new Error('No profiles found. Please create a profile first.');
             }
         }
 

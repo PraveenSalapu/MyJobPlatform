@@ -25,6 +25,7 @@ function getSupabase(): SupabaseClient {
  * GET /api/jobs/matched
  * Get jobs sorted by match score for the current user's active profile
  * Auto-generates embedding if profile has content but no embedding yet
+ * Supports pagination with ?page=1&limit=20
  */
 router.get('/matched', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -34,6 +35,10 @@ router.get('/matched', authenticateToken, async (req: Request, res: Response) =>
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
+
+    // Parse pagination params
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
 
     // Check if user's active profile needs embedding generation
     const { data: profile } = await getSupabase()
@@ -59,12 +64,13 @@ router.get('/matched', authenticateToken, async (req: Request, res: Response) =>
       }
     }
 
-    const jobs = await getMatchedJobsForUser(userId);
+    const result = await getMatchedJobsForUser(userId, { page, limit });
 
     res.json({
       success: true,
-      jobs,
-      count: jobs.length,
+      jobs: result.data,
+      count: result.data.length,
+      pagination: result.pagination,
       hasEmbedding: !!profile?.embedding,
     });
   } catch (error) {
@@ -123,20 +129,35 @@ router.post('/refresh-scores', authenticateToken, async (req: Request, res: Resp
  * GET /api/jobs
  * Get all jobs (public endpoint, no auth required)
  * Falls back to basic job list without scores
+ * Supports pagination with ?page=1&limit=20
  */
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
+    // Parse pagination params
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
+    const offset = (page - 1) * limit;
+
+    // Get total count
+    const { count: totalCount } = await getSupabase()
+      .from('jobs')
+      .select('*', { count: 'exact', head: true });
+
+    const total = totalCount || 0;
+
     const { data: jobs, error } = await getSupabase()
       .from('jobs')
-      .select('id, title, company, link, description, location, created_at')
+      .select('id, title, company, link, description, location, created_at, experience_level, job_type, category')
       .order('created_at', { ascending: false })
-      .limit(100);
+      .range(offset, offset + limit - 1);
 
     if (error) {
       console.error('Error fetching jobs:', error);
       res.status(500).json({ error: 'Failed to fetch jobs' });
       return;
     }
+
+    const totalPages = Math.ceil(total / limit);
 
     res.json({
       success: true,
@@ -145,6 +166,13 @@ router.get('/', async (_req: Request, res: Response) => {
         match_score: 0, // No user context, so no scores
       })),
       count: jobs?.length || 0,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasMore: page < totalPages,
+      },
     });
   } catch (error) {
     console.error('Error fetching jobs:', error);

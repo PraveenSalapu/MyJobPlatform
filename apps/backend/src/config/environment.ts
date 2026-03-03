@@ -3,6 +3,48 @@
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
+// Build CORS origins list
+function getCorsOrigins(): (string | RegExp)[] {
+  const origins: (string | RegExp)[] = [
+    /^chrome-extension:\/\/.*/, // Chrome extension always allowed
+  ];
+
+  if (isDevelopment) {
+    // Development origins
+    origins.push(
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:5175',
+      'http://localhost:4173',
+    );
+    // Allow Vercel previews only in development for testing
+    origins.push(/^https:\/\/[a-z0-9-]+-[a-z0-9]+\.vercel\.app$/);
+  }
+
+  // Production origins from environment (comma-separated)
+  // IMPORTANT: Set CORS_ORIGINS in production with your specific domain(s)
+  const productionOrigins = process.env.CORS_ORIGINS;
+  if (productionOrigins) {
+    productionOrigins.split(',').forEach(origin => {
+      const trimmed = origin.trim();
+      if (trimmed) origins.push(trimmed);
+    });
+  }
+
+  // Always include the app URL if set (primary production domain)
+  const appUrl = process.env.APP_URL;
+  if (appUrl && !origins.includes(appUrl)) {
+    origins.push(appUrl);
+  }
+
+  // If no production origins configured and in production, warn
+  if (!isDevelopment && !productionOrigins && !appUrl) {
+    console.warn('⚠️  No CORS_ORIGINS or APP_URL configured for production!');
+  }
+
+  return origins;
+}
+
 export const config = {
   // Server port
   port: process.env.PORT || 3001,
@@ -17,38 +59,6 @@ export const config = {
   // Feature flags
   enableDebugLogs: isDevelopment,
 };
-
-const origins: (string | RegExp)[] = [
-  /^chrome-extension:\/\/.*/, // Chrome extension always allowed
-  /\.vercel\.app$/,            // Allow all Vercel preview/production URLs
-];
-
-if (isDevelopment) {
-  // Development origins
-  origins.push(
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5175',
-    'http://localhost:4173',
-  );
-}
-
-// Production origins from environment
-const productionOrigins = process.env.CORS_ORIGINS;
-if (productionOrigins) {
-  productionOrigins.split(',').forEach(origin => {
-    origins.push(origin.trim());
-  });
-}
-
-// Always include the app URL if set
-const appUrl = process.env.APP_URL;
-if (appUrl && !origins.includes(appUrl)) {
-  origins.push(appUrl);
-}
-
-return origins;
-}
 
 // Validate required environment variables at startup
 export function validateEnvironment(): void {
@@ -65,6 +75,11 @@ export function validateEnvironment(): void {
     if (config.isProduction) {
       throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
     }
+  }
+
+  // Log CORS configuration in development
+  if (isDevelopment) {
+    console.log('📋 CORS Origins:', config.corsOrigins);
   }
 }
 

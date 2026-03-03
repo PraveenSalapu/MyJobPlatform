@@ -3,6 +3,7 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
+    "baseUrl": ".",
     "lib": [
       "ES2022"
     ],
@@ -17,7 +18,7 @@
     "skipLibCheck": true,
     "paths": {
       "@resumind/shared": [
-        "../../packages/shared/dist/index.d.ts"
+        "../../packages/shared/dist"
       ],
       "@resumind/shared/*": [
         "../../packages/shared/dist/*"

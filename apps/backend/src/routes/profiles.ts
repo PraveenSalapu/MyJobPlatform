@@ -1,10 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { authenticateToken } from '../middleware/auth.js';
 import { generateResumePDF } from '../services/pdf.js';
 import { updateProfileEmbedding, computeMatchScoresForProfile } from '../services/matchScore.js';
+import { analyzeResume, analyzeResumeWithAI } from '../services/resumeAnalysis.js';
 
 const router: Router = Router();
 
@@ -410,6 +412,75 @@ router.get('/:id/pdf', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Generate PDF error:', error);
     res.status(500).json({ error: 'Failed to generate PDF' });
+  }
+});
+
+// Rate limit for analysis (uses AI, should be protected)
+const analysisRateLimit = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5, // 5 analysis requests per minute
+  keyGenerator: (req: Request) => req.userId || req.ip || 'anonymous',
+  message: { error: 'Too many analysis requests. Please wait a moment.' },
+});
+
+// POST /api/profiles/analyze - Analyze resume data (without saving)
+// This is used during onboarding before a profile is created
+router.post('/analyze', analysisRateLimit, async (req: Request, res: Response) => {
+  try {
+    const { resumeData, useAI = false } = req.body;
+
+    if (!resumeData) {
+      res.status(400).json({ error: 'Resume data is required' });
+      return;
+    }
+
+    // Perform analysis
+    const analysis = useAI
+      ? await analyzeResumeWithAI(resumeData)
+      : await analyzeResume(resumeData);
+
+    res.json({
+      success: true,
+      analysis,
+    });
+  } catch (error) {
+    console.error('Resume analysis error:', error);
+    res.status(500).json({ error: 'Failed to analyze resume' });
+  }
+});
+
+// GET /api/profiles/:id/analyze - Analyze an existing profile
+router.get('/:id/analyze', analysisRateLimit, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId;
+    const { id } = req.params;
+    const useAI = req.query.ai === 'true';
+
+    // Get profile data
+    const { data: profile, error } = await getSupabase()
+      .from('profiles')
+      .select('data')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !profile) {
+      res.status(404).json({ error: 'Profile not found' });
+      return;
+    }
+
+    // Perform analysis
+    const analysis = useAI
+      ? await analyzeResumeWithAI(profile.data)
+      : await analyzeResume(profile.data);
+
+    res.json({
+      success: true,
+      analysis,
+    });
+  } catch (error) {
+    console.error('Profile analysis error:', error);
+    res.status(500).json({ error: 'Failed to analyze profile' });
   }
 });
 

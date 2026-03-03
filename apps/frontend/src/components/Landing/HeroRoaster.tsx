@@ -5,6 +5,8 @@ import { Cpu, Upload, User, ArrowRight, PlusCircle, Loader2 } from 'lucide-react
 import { extractTextFromPDF } from '../../utils/pdfUtils';
 import { parseResumeWithAI } from '../../services/parser';
 import { getAllProfiles, setActiveProfileId, createProfile, updateActiveProfileData, type UserProfile } from '../../services/storage';
+import { analyzeResume } from '../../services/api';
+import type { AtsScan } from '../../types';
 
 interface HeroRoasterProps {
     onScanComplete?: () => void;
@@ -94,28 +96,65 @@ export const HeroRoaster: React.FC<HeroRoasterProps> = ({ onScanComplete, onProf
                 addLog("Warning: Could not save to database.");
             }
 
-            setTimeout(() => {
-                addLog("Optimization complete.");
-                setScanState('complete');
+            // Perform real analysis
+            addLog("Running comprehensive resume analysis...");
 
-                // Dispatch with the CORRECT ID (from DB or existing)
-                dispatch({ type: 'SET_RESUME', payload: finalResumeData });
+            try {
+                const analysisResult = await analyzeResume(finalResumeData, false);
+                addLog(`Analysis complete. Score: ${analysisResult.overallScore}/100`);
 
-                dispatch({
-                    type: 'SET_SCAN_RESULTS',
-                    payload: {
-                        score: 42,
-                        issues: [
-                            { type: 'error', message: 'Header unreadable (Graphics detected)' },
-                            { type: 'error', message: 'Date format inconsistent (MM/YY vs Month Year)' },
-                            { type: 'warning', message: 'Missing key skills: Docker, Kubernetes' },
-                            { type: 'success', message: 'Contact info valid' }
-                        ],
-                        missingKeywords: ['Docker', 'Kubernetes']
-                    }
-                });
-                if (onScanComplete) onScanComplete();
-            }, 3500);
+                // Convert analysis result to AtsScan format
+                const scanResults: AtsScan = {
+                    score: analysisResult.overallScore,
+                    letterGrade: analysisResult.letterGrade,
+                    summary: analysisResult.summary,
+                    scores: analysisResult.scores,
+                    sectionAnalysis: analysisResult.sectionAnalysis,
+                    issues: analysisResult.issues,
+                    topPriorities: analysisResult.topPriorities,
+                    strengths: analysisResult.strengths,
+                    keywords: analysisResult.keywords.found,
+                    missingKeywords: analysisResult.keywords.missing,
+                    industryKeywords: analysisResult.keywords.industryRelevant,
+                    metrics: analysisResult.metrics,
+                    actionVerbs: analysisResult.actionVerbs,
+                };
+
+                setTimeout(() => {
+                    addLog("Optimization complete.");
+                    setScanState('complete');
+
+                    // Dispatch with the CORRECT ID (from DB or existing)
+                    dispatch({ type: 'SET_RESUME', payload: finalResumeData });
+                    dispatch({ type: 'SET_SCAN_RESULTS', payload: scanResults });
+
+                    if (onScanComplete) onScanComplete();
+                }, 1000);
+
+            } catch (analysisError) {
+                console.error('Analysis failed:', analysisError);
+                addLog("Warning: Could not complete full analysis. Using basic scan.");
+
+                // Fallback to basic analysis if API fails
+                setTimeout(() => {
+                    addLog("Basic scan complete.");
+                    setScanState('complete');
+
+                    dispatch({ type: 'SET_RESUME', payload: finalResumeData });
+                    dispatch({
+                        type: 'SET_SCAN_RESULTS',
+                        payload: {
+                            score: 50,
+                            issues: [
+                                { type: 'info', message: 'Resume parsed successfully. Complete your profile for detailed analysis.', category: 'completeness', priority: 1 }
+                            ],
+                            missingKeywords: []
+                        }
+                    });
+
+                    if (onScanComplete) onScanComplete();
+                }, 1500);
+            }
 
         } catch (error) {
             addLog("ERROR: Parse failed. File corrupted or encrypted.");

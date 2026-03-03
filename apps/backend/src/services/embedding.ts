@@ -18,24 +18,37 @@ export const generateEmbedding = async (text: string): Promise<number[]> => {
   if (!API_KEY) throw new Error('API Key not set');
   if (!text || text.trim().length === 0) throw new Error('Text cannot be empty');
 
-  try {
-    const result = await genAI.models.embedContent({
-      model: EMBEDDING_MODEL,
-      contents: text,
-      config: {
-        taskType: 'RETRIEVAL_DOCUMENT',
-      },
-    });
+  let retries = 0;
+  const maxRetries = 5;
 
-    if (!result.embeddings || result.embeddings.length === 0) {
-      throw new Error('No embeddings returned from API');
+  while (retries < maxRetries) {
+    try {
+      const result = await genAI.models.embedContent({
+        model: EMBEDDING_MODEL,
+        contents: text,
+        config: {
+          taskType: 'RETRIEVAL_DOCUMENT',
+        },
+      });
+
+      if (!result.embeddings || result.embeddings.length === 0) {
+        throw new Error('No embeddings returned from API');
+      }
+
+      return result.embeddings[0].values as number[];
+    } catch (error: any) {
+      if (error.status === 429 || error.message?.includes('429')) {
+        retries++;
+        const delay = Math.pow(2, retries) * 1000 + (Math.random() * 1000);
+        console.log(`[Embedding] Rate limit hit. Retrying in ${Math.round(delay)}ms (Attempt ${retries}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error('Error generating embedding:', error);
+        throw error;
+      }
     }
-
-    return result.embeddings[0].values as number[];
-  } catch (error) {
-    console.error('Error generating embedding:', error);
-    throw error;
   }
+  throw new Error('Failed to generate results after max retries');
 };
 
 /**

@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useResume } from '../../context/ResumeContext';
-import { WifiOff, RefreshCw, ArrowUpDown, ArrowDown, ArrowUp, Filter, Search } from 'lucide-react';
+import { WifiOff, RefreshCw, ArrowDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { fetchJobsFromDB } from '../../services/database/supabase';
+import type { FetchJobsResult } from '../../services/database/supabase';
 import { refreshMatchScores } from '../../services/api';
+import type { PaginationInfo } from '../../services/api';
 import type { Job } from '../../types';
 import { JobCard } from './JobCard';
 
@@ -54,6 +56,8 @@ const MOCK_JOBS: Job[] = [
 type SortField = 'match_score' | 'created_at' | 'company';
 type SortOrder = 'asc' | 'desc';
 
+const ITEMS_PER_PAGE = 20;
+
 export const JobTable: React.FC = () => {
     const [jobs, setJobs] = useState<Job[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
@@ -61,6 +65,10 @@ export const JobTable: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
 
     const [usingMockData, setUsingMockData] = useState<boolean>(false);
+
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState<number>(1);
+    const [pagination, setPagination] = useState<PaginationInfo | null>(null);
 
     // Sorting & Filtering State
     const [sortField, setSortField] = useState<SortField>('match_score');
@@ -177,21 +185,24 @@ export const JobTable: React.FC = () => {
     };
 
     // 5. UPDATE: Fetch from Supabase (BackendDB) instead of direct API
-    const handleFetchJobs = async () => {
+    const handleFetchJobs = async (page: number = currentPage) => {
         try {
             setLoading(true);
             setError(null);
             setUsingMockData(false);
 
             // Fetch from Central Database (populated by scripts/fetch-jobs.ts)
-            const dbJobs = await fetchJobsFromDB();
+            const result = await fetchJobsFromDB(page, ITEMS_PER_PAGE);
 
-            if (dbJobs.length === 0) {
+            if (result.jobs.length === 0 && page === 1) {
                 // Fallback if DB is empty? (Optional: Trigger crawling via an API endpoint if you had one)
                 console.warn("Supabase returned no jobs. The crawler script might not have run yet.");
             }
 
-            setJobs(dbJobs);
+            setJobs(result.jobs);
+            if (result.pagination) {
+                setPagination(result.pagination);
+            }
 
         } catch (err: any) {
             console.error("Supabase Fetch failed:", err);
@@ -199,9 +210,18 @@ export const JobTable: React.FC = () => {
             setError(`Database connection failed: ${err.message}`);
             setUsingMockData(true);
             setJobs(MOCK_JOBS);
+            setPagination(null);
         } finally {
             setLoading(false);
         }
+    };
+
+    // Handle page change
+    const handlePageChange = (newPage: number) => {
+        setCurrentPage(newPage);
+        handleFetchJobs(newPage);
+        // Scroll to top of job list
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     // Refresh match scores for current profile
@@ -236,7 +256,7 @@ export const JobTable: React.FC = () => {
                     <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2 flex-wrap">
                         Job Board
                         <span className="text-xs sm:text-sm font-normal text-gray-500 bg-gray-900 border border-gray-800 px-2 py-0.5 rounded-full">
-                            {jobs.length} found
+                            {pagination ? pagination.total : jobs.length} found
                         </span>
                     </h1>
                     <p className="text-gray-400 text-xs sm:text-sm mt-1">AI-curated opportunities matching your profile.</p>
@@ -344,6 +364,62 @@ export const JobTable: React.FC = () => {
                                 onTailor={handleTailor}
                             />
                         ))}
+
+                        {/* Pagination Controls */}
+                        {pagination && pagination.totalPages > 1 && (
+                            <div className="flex items-center justify-center gap-4 py-6 border-t border-gray-800 mt-6">
+                                <button
+                                    onClick={() => handlePageChange(currentPage - 1)}
+                                    disabled={currentPage <= 1}
+                                    className="flex items-center gap-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-300 hover:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronLeft size={16} />
+                                    <span className="hidden sm:inline">Previous</span>
+                                </button>
+
+                                <div className="flex items-center gap-2">
+                                    {/* Page numbers */}
+                                    {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                                        let pageNum: number;
+                                        if (pagination.totalPages <= 5) {
+                                            pageNum = i + 1;
+                                        } else if (currentPage <= 3) {
+                                            pageNum = i + 1;
+                                        } else if (currentPage >= pagination.totalPages - 2) {
+                                            pageNum = pagination.totalPages - 4 + i;
+                                        } else {
+                                            pageNum = currentPage - 2 + i;
+                                        }
+                                        return (
+                                            <button
+                                                key={pageNum}
+                                                onClick={() => handlePageChange(pageNum)}
+                                                className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
+                                                    currentPage === pageNum
+                                                        ? 'bg-indigo-600 text-white'
+                                                        : 'bg-gray-900 border border-gray-700 text-gray-300 hover:border-indigo-500'
+                                                }`}
+                                            >
+                                                {pageNum}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                <button
+                                    onClick={() => handlePageChange(currentPage + 1)}
+                                    disabled={!pagination.hasMore}
+                                    className="flex items-center gap-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-300 hover:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <span className="hidden sm:inline">Next</span>
+                                    <ChevronRight size={16} />
+                                </button>
+
+                                <span className="text-gray-500 text-sm ml-2">
+                                    Page {currentPage} of {pagination.totalPages}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

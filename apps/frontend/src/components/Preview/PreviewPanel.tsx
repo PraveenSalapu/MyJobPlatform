@@ -8,6 +8,7 @@ import { getDatabase } from '../../services/database/mongodb';
 import { v4 } from 'uuid';
 import { fetchWithAuth } from '../../services/api';
 import { getActiveProfile } from '../../services/storage';
+import { PAGE_SIZES } from '../../utils/pdfConstants';
 
 export const PreviewPanel = () => {
     const { resume, dispatch } = useResume();
@@ -154,9 +155,10 @@ export const PreviewPanel = () => {
         }
     };
 
-    // Calculate width based on page size
-    const pageWidth = pageSize === 'LETTER' ? '216mm' : '210mm';
-    const pageHeight = pageSize === 'LETTER' ? '279mm' : '297mm';
+    // Use shared page size constants for consistent rendering
+    const pageDims = PAGE_SIZES[pageSize === 'LETTER' ? 'LETTER' : 'A4'];
+    const pageWidth = `${pageDims.width}mm`;
+    const pageHeight = `${pageDims.height}mm`;
 
     return (
         <div className="h-full flex flex-col bg-[#1e1e1e] border-l border-gray-800">

@@ -108,17 +108,74 @@ export interface Demographics {
     requiresSponsorship?: boolean;
 }
 
-// ATS Scan results
-export interface AtsScan {
+// Section-level analysis
+export interface SectionAnalysis {
+    name: string;
     score: number;
-    issues: {
-        type: 'error' | 'warning' | 'info' | 'success';
-        message: string;
-        field?: string;
-    }[];
+    status: 'excellent' | 'good' | 'needs_work' | 'missing' | 'critical';
+    issues: string[];
+    suggestions: string[];
+}
+
+// Issue found during analysis
+export interface AnalysisIssue {
+    type: 'error' | 'warning' | 'info' | 'success';
+    category: 'structure' | 'content' | 'ats' | 'impact' | 'completeness';
+    message: string;
+    field?: string;
+    suggestion?: string;
+    priority: number;
+}
+
+// Comprehensive ATS Scan / Resume Analysis results
+export interface AtsScan {
+    // Overall scores
+    score: number;
+    letterGrade?: string;
+    summary?: string;
+
+    // Category scores
+    scores?: {
+        completeness: number;
+        impact: number;
+        atsCompatibility: number;
+        clarity: number;
+        relevance: number;
+    };
+
+    // Section breakdown
+    sectionAnalysis?: SectionAnalysis[];
+
+    // All issues (new detailed format)
+    issues: AnalysisIssue[];
+
+    // Priority actions
+    topPriorities?: string[];
+
+    // Strengths identified
+    strengths?: string[];
+
+    // Keywords analysis
     keywords?: string[];
-    suggestions?: string[];
     missingKeywords?: string[];
+    industryKeywords?: string[];
+
+    // Metrics
+    metrics?: {
+        bulletPointsWithNumbers: number;
+        totalBulletPoints: number;
+        percentageQuantified: number;
+    };
+
+    // Action verbs
+    actionVerbs?: {
+        strong: string[];
+        weak: string[];
+        suggestions: string[];
+    };
+
+    // Legacy fields for backwards compatibility
+    suggestions?: string[];
 }
 
 export interface Resume {

@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useResume } from '../../context/ResumeContext';
+import { useAuth } from '../../context/AuthContext';
 import { generateCoverLetter } from '../../services/gemini';
 import { X, FileText, Copy, Check, Loader2, PenTool, Lightbulb } from 'lucide-react';
+
+const COVER_LETTER_COST = 15; // credits
 
 interface CoverLetterModalProps {
     isOpen: boolean;
@@ -10,6 +13,29 @@ interface CoverLetterModalProps {
 
 export const CoverLetterModal = ({ isOpen, onClose }: CoverLetterModalProps) => {
     const { resume, dispatch } = useResume();
+    const { credits, nextRefillAt, refreshCredits } = useAuth();
+
+    // Format refill date for display
+    const formatRefillDate = (isoDate: string | null): string => {
+        if (!isoDate) return 'in 5 days';
+        const refillDate = new Date(isoDate);
+        const now = new Date();
+        const diffMs = refillDate.getTime() - now.getTime();
+
+        if (diffMs <= 0) return 'soon';
+
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+        if (diffDays > 0) {
+            return diffHours > 0 ? `${diffDays} days ${diffHours} hours` : `${diffDays} days`;
+        } else if (diffHours > 0) {
+            return `${diffHours} hours`;
+        } else {
+            const diffMins = Math.floor(diffMs / (1000 * 60));
+            return `${diffMins} minutes`;
+        }
+    };
     const [jobDescription, setJobDescription] = useState('');
     const [jobTitle, setJobTitle] = useState('');
     const [company, setCompany] = useState('');
@@ -59,6 +85,8 @@ export const CoverLetterModal = ({ isOpen, onClose }: CoverLetterModalProps) => 
             setCompanyInsight(result.companyInsight || '');
             // Store cover letter in context for autofill
             dispatch({ type: 'SET_COVER_LETTER', payload: result.coverLetter });
+            // Refresh credits after generation
+            refreshCredits();
         } catch (err) {
             console.error(err);
             setError(err instanceof Error ? err.message : 'Failed to generate cover letter. Please try again.');
@@ -148,9 +176,26 @@ export const CoverLetterModal = ({ isOpen, onClose }: CoverLetterModalProps) => 
                                 </p>
                             </div>
 
+                            {/* Insufficient Credits Warning */}
+                            {credits !== null && credits < COVER_LETTER_COST && (
+                                <div className="p-4 bg-red-900/20 border border-red-800/50 rounded-lg flex items-start gap-3">
+                                    <span className="text-2xl">⚡</span>
+                                    <div>
+                                        <h4 className="text-red-300 font-semibold mb-1">Insufficient Credits</h4>
+                                        <p className="text-red-400/80 text-sm">
+                                            You need <span className="font-bold">{COVER_LETTER_COST} credits</span> to generate a cover letter.
+                                            You currently have <span className="font-bold">{credits}</span>.
+                                        </p>
+                                        <p className="text-gray-500 text-xs mt-2">
+                                            Credits will refill to 500 in <span className="text-gray-400 font-medium">{formatRefillDate(nextRefillAt)}</span>.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
                             <button
                                 onClick={handleGenerate}
-                                disabled={loading || !jobDescription.trim() || !company.trim()}
+                                disabled={loading || !jobDescription.trim() || !company.trim() || (credits !== null && credits < COVER_LETTER_COST)}
                                 className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(79,70,229,0.3)]"
                             >
                                 {loading ? (
@@ -161,7 +206,7 @@ export const CoverLetterModal = ({ isOpen, onClose }: CoverLetterModalProps) => 
                                 ) : (
                                     <>
                                         <FileText size={20} />
-                                        <span>Generate Cover Letter (15 credits)</span>
+                                        <span>Generate Cover Letter ({COVER_LETTER_COST} ⚡)</span>
                                     </>
                                 )}
                             </button>

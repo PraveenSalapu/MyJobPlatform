@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import * as cheerio from 'cheerio';
 
 // Configure dotenv to read from the root .env file
 const __filename = fileURLToPath(import.meta.url);
@@ -30,41 +31,148 @@ if (missingVars.length > 0) {
 // Initialize Supabase with Service Role (Admin Access)
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-// Initialize Gemini for embeddings
+// Initialize Gemini
 const genAI = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 const EMBEDDING_MODEL = 'text-embedding-004';
+const ANALYSIS_MODEL = 'gemini-1.5-flash';
+
+// --- CONFIGURATION ---
+
+const ATS_DOMAINS = [
+    'greenhouse.io',
+    'lever.co',
+    'ashbyhq.com',
+    'myworkdayjobs.com',
+    'jobs.silkroad.com',
+    'icims.com',
+    'jobvite.com',
+    'bamboohr.com'
+];
+
+// --- HELPER FUNCTIONS ---
 
 /**
- * Generate embedding for a job description using Gemini
+ * Normalizes a job URL to prevent duplicates from tracking parameters
+ */
+const normalizeJobUrl = (url: string): string => {
+    try {
+        const urlObj = new URL(url);
+        // Remove common tracking parameters
+        const paramsToRemove = ['source', 'utm_source', 'utm_medium', 'utm_campaign', 'ref', 'gh_jid', 'lever-source'];
+        paramsToRemove.forEach(p => urlObj.searchParams.delete(p));
+        return urlObj.toString();
+    } catch (e) {
+        return url;
+    }
+};
+
+/**
+ * Validates if a string is a valid URL
+ */
+const isValidUrl = (urlString: string) => {
+    try {
+        return Boolean(new URL(urlString));
+    }
+    catch (e) {
+        return false;
+    }
+}
+
+/**
+ * Scrapes the full job description from a URL using Cheerio
+ */
+const scrapeFullJobDescription = async (url: string): Promise<string | null> => {
+    if (!isValidUrl(url)) return null;
+
+    console.log(`Scraping full content from: ${url}`);
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+        const response = await fetch(url, {
+            signal: controller.signal,
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JobCrawler/1.0)' }
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) return null;
+
+        const html = await response.text();
+        const $ = cheerio.load(html);
+
+        // Remove scripts, styles, navs
+        $('script, style, nav, footer, header, aside, .cookie-banner').remove();
+
+        // Target common job description containers
+        const selectors = [
+            '#job-description', '.job-description', '[class*="description"]',
+            'main', 'article', '#content'
+        ];
+
+        let text = '';
+        for (const sel of selectors) {
+            const el = $(sel);
+            if (el.length > 0) {
+                text = el.text().replace(/\s+/g, ' ').trim();
+                if (text.length > 500) break; // Found a good chunk
+            }
+        }
+
+        // Fallback to body
+        if (text.length < 200) {
+            text = $('body').text().replace(/\s+/g, ' ').trim();
+        }
+
+        return text.length > 200 ? text : null;
+    } catch (error) {
+        console.error(`Failed to scrape ${url}:`, error instanceof Error ? error.message : String(error));
+        return null;
+    }
+};
+
+/**
+ * Generate embedding for a job description using Gemini with Retry Logic
  */
 const generateJobEmbedding = async (description: string): Promise<number[] | null> => {
     if (!genAI || !description || description.trim().length === 0) {
         return null;
     }
 
-    try {
-        const result = await genAI.models.embedContent({
-            model: EMBEDDING_MODEL,
-            contents: description.slice(0, 10000), // Limit text length
-            config: { taskType: 'RETRIEVAL_DOCUMENT' },
-        });
+    let retries = 0;
+    const maxRetries = 5;
 
-        if (!result.embeddings || result.embeddings.length === 0) {
-            return null;
+    while (retries < maxRetries) {
+        try {
+            const result = await genAI.models.embedContent({
+                model: EMBEDDING_MODEL,
+                contents: description.slice(0, 10000), // Limit text length
+                config: { taskType: 'RETRIEVAL_DOCUMENT' },
+            });
+
+            if (!result.embeddings || result.embeddings.length === 0) {
+                return null;
+            }
+
+            return result.embeddings[0].values;
+        } catch (error: any) {
+            if (error.status === 429 || error.message?.includes('429')) {
+                retries++;
+                const delay = Math.pow(2, retries) * 1000 + (Math.random() * 1000);
+                console.log(`Rate limit (429) hit. Retrying in ${Math.round(delay)}ms (Attempt ${retries}/${maxRetries})...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                return null;
+            }
         }
-
-        return result.embeddings[0].values;
-    } catch (error) {
-        console.error('Error generating embedding:', error);
-        return null;
     }
+    return null;
 };
 
 // Metadata Interface
 interface JobMetadata {
-    experience_level: string; // "Entry", "Mid", "Senior", "Lead"
-    job_type: string;        // "Full-time", "Contract", "Part-time"
-    category: string;        // "Frontend", "Backend", "Full Stack", "DevOps", "AI/ML", "Mobile"
+    experience_level: string;
+    job_type: string;
+    category: string;
 }
 
 /**
@@ -86,34 +194,23 @@ const analyzeJobMetadata = async (description: string, title: string): Promise<J
         Return ONLY the JSON object.
         `;
 
-        // Use "gemini-2.0-flash-exp" as requested
         const result = await genAI.models.generateContent({
-            model: "gemini-2.0-flash-exp",
+            model: ANALYSIS_MODEL,
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
         });
 
-        // DEBUG: Inspect structure
-        console.log('DEBUG GEMINI RESULT KEYS:', Object.keys(result));
-        try {
-            console.log('DEBUG GEMINI RESULT:', JSON.stringify(result).slice(0, 500));
-        } catch (e) { console.log('Result not stringifiable'); }
-
-        // Attempt safe extraction
         let jsonString = '';
         if (result && typeof (result as any).text === 'function') {
             jsonString = (result as any).text();
         } else if (result && (result as any).response && typeof (result as any).response.text === 'function') {
             jsonString = (result as any).response.text();
         } else {
-            // throw new Error('Unknown response structure'); 
-            return null; // Just skip for now to let loop continue
+            return null;
         }
 
-        // Simple cleanup to ensure JSON
         jsonString = jsonString.replace(/```json/g, '').replace(/```/g, '').trim();
         return JSON.parse(jsonString) as JobMetadata;
     } catch (error) {
-        console.error('Error analyzing job metadata:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
         return null;
     }
 };
@@ -125,9 +222,10 @@ interface JSearchJob {
     job_apply_link: string;
     job_description: string;
     job_posted_at_datetime_utc: string;
+    source?: 'RSS' | 'API' | 'Google'; // Track source
 }
 
-const fetchJobsFromRapidAPI = async (query: string) => {
+const fetchJobsFromRapidAPI = async (query: string, datePosted: string = 'month') => {
     const url = 'https://jsearch.p.rapidapi.com/search';
     const options = {
         method: 'GET',
@@ -138,8 +236,9 @@ const fetchJobsFromRapidAPI = async (query: string) => {
     };
 
     try {
-        const fetchUrl = `${url}?query=${encodeURIComponent(query)}&page=1&num_pages=1&date_posted=today&country=us`;
-        console.log(`Fetching jobs for: "${query}"...`);
+        // Use 'month' to ensure we get results
+        const fetchUrl = `${url}?query=${encodeURIComponent(query)}&page=1&num_pages=1&date_posted=${datePosted}&country=us`;
+        console.log(`Fetching jobs for: "${query}" (date_posted=${datePosted})...`);
         const response = await fetch(fetchUrl, options);
         const data = await response.json();
         return data.data || [];
@@ -149,104 +248,145 @@ const fetchJobsFromRapidAPI = async (query: string) => {
     }
 };
 
+const fetchJobsFromGoogle = async (query: string): Promise<JSearchJob[]> => {
+    const jobs: JSearchJob[] = [];
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&ibp=htl;jobs`;
+
+    console.log(`Fallback: Google Searching for "${query}"...`);
+
+    try {
+        const response = await fetch(searchUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+
+        if (!response.ok) return [];
+
+        const html = await response.text();
+        const $ = cheerio.load(html);
+
+        $('a').each((_, el) => {
+            const href = $(el).attr('href');
+            if (href && (href.includes('greenhouse.io') || href.includes('lever.co') || href.includes('workday'))) {
+                const urlObj = new URL(href, 'https://www.google.com');
+                const realUrl = urlObj.searchParams.get('q') || href;
+
+                if (isValidUrl(realUrl)) {
+                    jobs.push({
+                        job_id: Buffer.from(realUrl).toString('base64'),
+                        job_title: $(el).text() || 'Unknown Job',
+                        employer_name: 'Unknown Company',
+                        job_apply_link: realUrl,
+                        job_description: 'Fetched via Google Fallback',
+                        job_posted_at_datetime_utc: new Date().toISOString(),
+                        source: 'Google'
+                    });
+                }
+            }
+        });
+
+    } catch (e) {
+        console.error('Google Fallback Error (Ignored):', e instanceof Error ? e.message : String(e));
+    }
+
+    return jobs;
+};
+
 const runCrawler = async () => {
     console.log('--- Starting Job Crawler ---');
 
-    // 1. Fetch relevant jobs
-    // Searching for multiple variations to get a good mix
-    // 1. Fetch relevant jobs using Advanced Queries (Boolean Search / "Dorking")
-    // Searching for multiple variations to get a good mix
-    const queries = [
-        // 1. Broad Tech Terms (OR) + Location
-        '("Software Engineer" OR "Full Stack Developer" OR "Backend Developer" OR "Frontend Developer") in "United States"',
-
-        // 2. Specific Stacks (AND/OR) excluding Senior/Lead roles for broader mid-level focus
-        '("React" OR "Node.js" OR "TypeScript" OR "Python") AND "Developer" in "United States" -"Senior" -"Lead" -"Manager"',
-
-        // 3. Remote specific (using query keywords often found in remote listings)
-        '("Remote" AND "Software Engineer")'
-    ];
-
     let allJobs: JSearchJob[] = [];
 
-    for (const query of queries) {
-        const jobs = await fetchJobsFromRapidAPI(query);
-        allJobs = [...allJobs, ...jobs];
-        // Brief pause to avoid rate limits if any
-        await new Promise(resolve => setTimeout(resolve, 1000));
-    }
+    // 1. PRIMARY: JSearch (Broad Query + NO Strict Filter)
+    console.log('--- Phase 1: JSearch (Broad) ---');
+    // Using broad query because 'site:' queries were unreliable/unparsed by API occasionally
+    // We fetch broad and accept ALL results (No Strict Filtering)
+    const query = '"Software Engineer" OR "Developer"';
+    const jobs = await fetchJobsFromRapidAPI(query, 'month');
 
-    console.log(`Fetched ${allJobs.length} raw jobs.`);
+    // Accept all valid job objects with a link
+    const validJobs = jobs.filter((job: any) => job.job_apply_link && job.job_title);
 
-    // 2. Process and Insert into Supabase
+    validJobs.forEach((j: any) => j.source = 'API');
+
+    console.log(`Broad Query "${query}" returned ${jobs.length} jobs, ${validJobs.length} valid for processing.`);
+    allJobs = [...allJobs, ...validJobs];
+
+    // 2. SECONDARY: Google Boolean Search
+    console.log('--- Phase 2: Google Boolean Search ---');
+    const googleJobs = await fetchJobsFromGoogle('site:greenhouse.io (Software Engineer) -intitle:profiles -inurl:dir');
+    allJobs = [...allJobs, ...googleJobs];
+
+    console.log(`Total unique raw jobs fetched: ${allJobs.length}`);
+    console.log('Processing and inserting jobs...');
+
     let authorizedCount = 0;
     let embeddingCount = 0;
     let analyzedCount = 0;
-
-    console.log('Processing and inserting jobs...');
+    let scrapedCount = 0;
 
     for (const job of allJobs) {
-        // Filter out LinkedIn jobs (often "Easy Apply" spam or require external login)
-        if (job.job_apply_link && job.job_apply_link.includes('linkedin.com')) {
+        if (job.job_apply_link && job.job_apply_link.includes('linkedin.com')) continue;
+
+        const normalizedLink = normalizeJobUrl(job.job_apply_link);
+        let description = job.job_description || '';
+
+        // --- ENHANCEMENT: SCRAPE IF DESCRIPTION IS POOR ---
+        if ((job.source === 'Google' || description.length < 500) && job.job_apply_link) {
+            // Only verbose log occasionally
+            if (scrapedCount % 5 === 0) console.log(`Enriching job "${job.job_title}" via scraping...`);
+            const fullContent = await scrapeFullJobDescription(job.job_apply_link);
+
+            if (fullContent && fullContent.length > description.length) {
+                description = fullContent;
+                scrapedCount++;
+            }
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+
+        if (description.length < 100) {
+            console.log(`Skipping job "${job.job_title}" - Description too short.`);
             continue;
         }
 
-        const description = job.job_description || 'No description';
-
-        // Analyze metadata (AI) FIRST so it's available for updates
-        const metadata = await analyzeJobMetadata(description, job.job_title);
-        if (metadata) analyzedCount++;
-
-        // Check if job exists first (since no unique constraint on link in DB yet)
+        // Check if job exists using NORMALIZED link
         const { data: existing } = await supabase
             .from('jobs')
             .select('id')
-            .eq('link', job.job_apply_link)
+            .eq('link', normalizedLink)
             .maybeSingle();
 
         if (existing) {
-            console.log(`Updating existing job: ${job.job_title}`);
-            const { error: updateError } = await supabase
-                .from('jobs')
-                .update({
-                    experience_level: metadata?.experience_level || 'Mid',
-                    job_type: metadata?.job_type || 'Full-time',
-                    category: metadata?.category || 'Other'
-                })
-                .eq('id', existing.id);
-
-            if (updateError) {
-                console.error('Update Error:', updateError.message);
-            } else {
-                authorizedCount++;
-            }
+            // Skipping log to reduce noise
             continue;
         }
 
-        // Generate embedding for this job
+        // Analyze metadata (AI)
+        const metadata = await analyzeJobMetadata(description, job.job_title);
+        if (metadata) analyzedCount++;
+
+        // Generate embedding
         const embedding = await generateJobEmbedding(description);
 
         const dbRecord: Record<string, unknown> = {
             title: job.job_title,
             company: job.employer_name,
-            link: job.job_apply_link,
+            link: normalizedLink,
             description: description,
             location: 'Remote/US',
-            // Add metadata fields if analysis succeeded, otherwise default or null
+            created_at: job.job_posted_at_datetime_utc,
             experience_level: metadata?.experience_level || 'Mid',
             job_type: metadata?.job_type || 'Full-time',
             category: metadata?.category || 'Other'
         };
 
-        // Add embedding if generated successfully
         if (embedding) {
             dbRecord.embedding = embedding;
             embeddingCount++;
         }
 
-        const { error } = await supabase
-            .from('jobs')
-            .insert(dbRecord);
+        const { error } = await supabase.from('jobs').insert(dbRecord);
 
         if (error) {
             console.error('Insert Error:', error.message);
@@ -254,27 +394,23 @@ const runCrawler = async () => {
             authorizedCount++;
         }
 
-        // Small delay between jobs to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 200));
+        if (authorizedCount % 5 === 0 && authorizedCount > 0) {
+            console.log(`Processed ${authorizedCount} new jobs so far...`);
+        }
     }
 
-    console.log(`Upserted ${authorizedCount} jobs with ${embeddingCount} embeddings and ${analyzedCount} classifications.`);
-    console.log('Match scores will be calculated on-demand when users view jobs.');
+    console.log(`Upserted ${authorizedCount} jobs.`);
 
-    // 3. Cleanup Old Jobs (> 32 hours)
-    const thirtyTwoHoursAgo = new Date(Date.now() - 32 * 60 * 60 * 1000).toISOString();
+    // Cleanup Old Jobs (Retention: 30 days to match fetch window)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    console.log(`Deleting jobs older than: ${thirtyDaysAgo}`);
 
-    const { error: deleteError, count } = await supabase
+    const { count } = await supabase
         .from('jobs')
         .delete({ count: 'exact' })
-        .lt('created_at', thirtyTwoHoursAgo);
+        .lt('created_at', thirtyDaysAgo);
 
-    if (deleteError) {
-        console.error('Cleanup Error:', deleteError.message);
-    } else {
-        console.log(`Cleaned up ${count} old jobs.`);
-    }
-
+    console.log(`Cleaned up ${count} old jobs.`);
     console.log('--- Crawler Finished ---');
 };
 

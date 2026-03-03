@@ -16,7 +16,29 @@ interface TailorModalProps {
 
 export const TailorModal = ({ isOpen, onClose, jobDescription: initialJD = '' }: TailorModalProps) => {
     const { resume, dispatch } = useResume();
-    const { credits, refreshCredits } = useAuth();
+    const { credits, nextRefillAt, refreshCredits } = useAuth();
+
+    // Format refill date for display
+    const formatRefillDate = (isoDate: string | null): string => {
+        if (!isoDate) return 'in 5 days';
+        const refillDate = new Date(isoDate);
+        const now = new Date();
+        const diffMs = refillDate.getTime() - now.getTime();
+
+        if (diffMs <= 0) return 'soon';
+
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+        if (diffDays > 0) {
+            return diffHours > 0 ? `${diffDays} days ${diffHours} hours` : `${diffDays} days`;
+        } else if (diffHours > 0) {
+            return `${diffHours} hours`;
+        } else {
+            const diffMins = Math.floor(diffMs / (1000 * 60));
+            return `${diffMins} minutes`;
+        }
+    };
     const { addToast } = useToast();
     const [jobDescription, setJobDescription] = useState(initialJD);
     const [isTailoring, setIsTailoring] = useState(false);
@@ -464,6 +486,23 @@ export const TailorModal = ({ isOpen, onClose, jobDescription: initialJD = '' }:
                                 {error && (
                                     <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-red-300 text-sm">
                                         {error}
+                                    </div>
+                                )}
+
+                                {/* Insufficient Credits Warning */}
+                                {credits !== null && credits < 30 && (
+                                    <div className="p-4 bg-red-900/20 border border-red-800/50 rounded-lg flex items-start gap-3">
+                                        <span className="text-2xl">⚡</span>
+                                        <div>
+                                            <h4 className="text-red-300 font-semibold mb-1">Insufficient Credits</h4>
+                                            <p className="text-red-400/80 text-sm">
+                                                You need <span className="font-bold">30 credits</span> to use AI tailoring.
+                                                You currently have <span className="font-bold">{credits}</span>.
+                                            </p>
+                                            <p className="text-gray-500 text-xs mt-2">
+                                                Credits will refill to 500 in <span className="text-gray-400 font-medium">{formatRefillDate(nextRefillAt)}</span>.
+                                            </p>
+                                        </div>
                                     </div>
                                 )}
                             </>

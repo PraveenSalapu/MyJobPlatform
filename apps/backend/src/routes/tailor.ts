@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { authenticateToken } from '../middleware/auth.js';
 import { tailorResume, calculateATSScore, optimizeBulletPoint, generateEssayResponses, generateCoverLetter, standardizeSkills } from '../services/gemini.js';
@@ -7,6 +8,27 @@ import { deductCredits } from './credits.js';
 import type { Resume, EssayQuestion } from '@resumind/shared';
 
 const router: Router = Router();
+
+// Rate limiting for AI operations (free tier protection)
+// These limits help protect Gemini API quota on free tier
+const aiRateLimit = rateLimit({
+  windowMs: 60 * 1000, // 1 minute window
+  max: 5, // 5 AI requests per minute per user
+  keyGenerator: (req: Request) => req.userId || req.ip || 'anonymous',
+  message: { error: 'Too many AI requests. Please wait a moment and try again.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Stricter limit for expensive operations (tailoring, cover letters)
+const expensiveAiRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minute window
+  max: 10, // 10 expensive operations per 5 minutes
+  keyGenerator: (req: Request) => req.userId || req.ip || 'anonymous',
+  message: { error: 'Rate limit exceeded for AI generation. Please wait a few minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Lazy-initialized Supabase client
 let _supabase: SupabaseClient | null = null;
@@ -19,9 +41,6 @@ function getSupabase(): SupabaseClient {
   }
   return _supabase;
 }
-
-// Apply authentication to all routes
-router.use(authenticateToken);
 
 // Apply authentication to all routes
 router.use(authenticateToken);
@@ -42,7 +61,7 @@ const atsScoreSchema = z.object({
 // ...
 
 // POST /api/tailor/generate - Main Resume Tailoring
-router.post('/generate', async (req: Request, res: Response) => {
+router.post('/generate', expensiveAiRateLimit, async (req: Request, res: Response) => {
   try {
     const userId = req.userId;
 
@@ -97,7 +116,7 @@ router.post('/generate', async (req: Request, res: Response) => {
 });
 
 // POST /api/tailor/score - Calculate ATS score
-router.post('/score', async (req: Request, res: Response) => {
+router.post('/score', aiRateLimit, async (req: Request, res: Response) => {
   try {
     const userId = req.userId;
 
@@ -155,7 +174,7 @@ router.post('/score', async (req: Request, res: Response) => {
 });
 
 // POST /api/tailor/optimize-bullet - Optimize a single bullet point
-router.post('/optimize-bullet', async (req: Request, res: Response) => {
+router.post('/optimize-bullet', aiRateLimit, async (req: Request, res: Response) => {
   try {
     const optimizeSchema = z.object({
       bullet: z.string().min(5, 'Bullet too short'),
@@ -204,7 +223,7 @@ const coverLetterSchema = z.object({
 });
 
 // POST /api/tailor/cover-letter - Generate AI cover letter
-router.post('/cover-letter', async (req: Request, res: Response) => {
+router.post('/cover-letter', expensiveAiRateLimit, async (req: Request, res: Response) => {
   try {
     const userId = req.userId;
 
@@ -276,7 +295,7 @@ const essayGenerateSchema = z.object({
 });
 
 // POST /api/tailor/essays - Generate AI essay responses for job application questions
-router.post('/essays', async (req: Request, res: Response) => {
+router.post('/essays', expensiveAiRateLimit, async (req: Request, res: Response) => {
   try {
     const userId = req.userId;
 
@@ -333,7 +352,7 @@ router.post('/essays', async (req: Request, res: Response) => {
 });
 
 // POST /api/tailor/vector-match - Calculate semantic match score using Vectors
-router.post('/vector-match', async (req: Request, res: Response) => {
+router.post('/vector-match', aiRateLimit, async (req: Request, res: Response) => {
   try {
     const vectorMatchSchema = z.object({
       resumeText: z.string().min(50, 'Resume text too short'),
@@ -375,7 +394,7 @@ router.post('/vector-match', async (req: Request, res: Response) => {
 });
 
 // POST /api/tailor/standardize-skills - Reorganize skills using AI
-router.post('/standardize-skills', async (req: Request, res: Response) => {
+router.post('/standardize-skills', aiRateLimit, async (req: Request, res: Response) => {
   try {
     const { skills } = req.body;
 

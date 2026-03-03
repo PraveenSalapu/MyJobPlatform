@@ -10,6 +10,10 @@ function getSupabase(): SupabaseClient {
       process.env.VITE_SUPABASE_URL || '',
       process.env.SUPABASE_SERVICE_ROLE_KEY || ''
     );
+    console.log('[matchScore] Init Supabase Client with:',
+      process.env.VITE_SUPABASE_URL,
+      'Key Length:', (process.env.SUPABASE_SERVICE_ROLE_KEY || '').length
+    );
   }
   return _supabase;
 }
@@ -23,6 +27,9 @@ export interface MatchedJob {
   match_score: number;
   location?: string;
   created_at?: string;
+  experience_level?: string;
+  job_type?: string;
+  category?: string;
 }
 
 /**
@@ -60,11 +67,30 @@ export const updateProfileEmbedding = async (profileId: string, resumeData: Resu
   }
 };
 
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
+}
+
 /**
  * Get matched jobs for a user's active profile
  * Calculates match scores ON-DEMAND using cosine similarity
  */
-export const getMatchedJobsForUser = async (userId: string): Promise<MatchedJob[]> => {
+export const getMatchedJobsForUser = async (
+  userId: string,
+  { page = 1, limit = 20 }: PaginationParams = {}
+): Promise<PaginatedResult<MatchedJob>> => {
   try {
     // Get user's active profile with embedding
     const { data: profile, error: profileError } = await getSupabase()
@@ -76,13 +102,13 @@ export const getMatchedJobsForUser = async (userId: string): Promise<MatchedJob[
 
     if (profileError || !profile) {
       console.log('No active profile found for user');
-      return await getJobsWithoutScores();
+      return await getJobsWithoutScores({ page, limit });
     }
 
     // If profile has no embedding, return jobs without scores
     if (!profile.embedding) {
       console.log('Profile has no embedding yet');
-      return await getJobsWithoutScores();
+      return await getJobsWithoutScores({ page, limit });
     }
 
     // Verify profile embedding format
@@ -92,27 +118,41 @@ export const getMatchedJobsForUser = async (userId: string): Promise<MatchedJob[
         profileEmbedding = JSON.parse(profileEmbedding);
       } catch (e) {
         console.error('Failed to parse profile embedding', e);
-        return await getJobsWithoutScores();
+        return await getJobsWithoutScores({ page, limit });
       }
     }
 
     // Ensure it is an array now
     if (!Array.isArray(profileEmbedding)) {
       console.error('Profile embedding is not an array');
-      return await getJobsWithoutScores();
+      return await getJobsWithoutScores({ page, limit });
     }
 
-    // Get all jobs with embeddings
+    // Get total count for pagination
+    const { count: totalCount, error: countError } = await getSupabase()
+      .from('jobs')
+      .select('*', { count: 'exact', head: true });
+
+    const total = totalCount || 0;
+
+    if (countError) {
+      console.error('Error getting job count:', countError);
+    }
+
+    // Get all jobs with embeddings (we need all to sort by score, then paginate)
+    // For large datasets, consider pre-computing scores
     const { data: jobs, error: jobsError } = await getSupabase()
       .from('jobs')
-      .select('id, title, company, link, description, location, created_at, embedding')
-      .not('embedding', 'is', null)
+      .select('*')
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(200); // Fetch more for scoring, then paginate in memory
 
     if (jobsError || !jobs || jobs.length === 0) {
-      console.log('No jobs with embeddings found');
-      return await getJobsWithoutScores();
+      console.log('No jobs found. Details:', {
+        error: jobsError,
+        count: jobs ? jobs.length : 'null'
+      });
+      return await getJobsWithoutScores({ page, limit });
     }
 
     // Calculate match scores on-the-fly
@@ -138,13 +178,32 @@ export const getMatchedJobsForUser = async (userId: string): Promise<MatchedJob[
         location: job.location,
         created_at: job.created_at,
         match_score: score,
+        experience_level: job.experience_level,
+        job_type: job.job_type,
+        category: job.category,
       };
     });
 
-    // Sort by match score descending and filter low scores
-    return scoredJobs
-      .filter(job => job.match_score >= 0) // Show all jobs even if low match
+    // Sort by match score descending
+    const sortedJobs = scoredJobs
+      .filter(job => job.match_score >= 0)
       .sort((a, b) => b.match_score - a.match_score);
+
+    // Apply pagination
+    const startIndex = (page - 1) * limit;
+    const paginatedJobs = sortedJobs.slice(startIndex, startIndex + limit);
+    const totalPages = Math.ceil(sortedJobs.length / limit);
+
+    return {
+      data: paginatedJobs,
+      pagination: {
+        page,
+        limit,
+        total: sortedJobs.length,
+        totalPages,
+        hasMore: page < totalPages,
+      },
+    };
 
   } catch (error) {
     console.error('Error in getMatchedJobsForUser:', error);
@@ -155,22 +214,48 @@ export const getMatchedJobsForUser = async (userId: string): Promise<MatchedJob[
 /**
  * Fallback: get recent jobs without computed scores
  */
-async function getJobsWithoutScores(): Promise<MatchedJob[]> {
+async function getJobsWithoutScores(
+  { page = 1, limit = 20 }: PaginationParams = {}
+): Promise<PaginatedResult<MatchedJob>> {
+  // Get total count
+  const { count: totalCount } = await getSupabase()
+    .from('jobs')
+    .select('*', { count: 'exact', head: true });
+
+  const total = totalCount || 0;
+  const offset = (page - 1) * limit;
+
   const { data: jobs, error } = await getSupabase()
     .from('jobs')
-    .select('id, title, company, link, description, location, created_at')
+    .select('id, title, company, link, description, location, created_at, experience_level, job_type, category')
     .order('created_at', { ascending: false })
-    .limit(50);
+    .range(offset, offset + limit - 1);
 
   if (error) {
     console.error('Error fetching jobs:', error);
-    return [];
+    return {
+      data: [],
+      pagination: { page, limit, total: 0, totalPages: 0, hasMore: false },
+    };
   }
 
-  return (jobs || []).map(job => ({
+  const data = (jobs || []).map(job => ({
     ...job,
     match_score: 0, // No profile to compare against
   }));
+
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasMore: page < totalPages,
+    },
+  };
 }
 
 /**

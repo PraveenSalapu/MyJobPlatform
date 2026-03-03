@@ -73,7 +73,29 @@ export const Layout = () => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isMobilePreviewMode, setIsMobilePreviewMode] = useState(false); // For mobile editor toggle
     const { resume, dispatch } = useResume();
-    const { credits, isAuthenticated } = useAuth();
+    const { credits, nextRefillAt, isAuthenticated } = useAuth();
+
+    // Format refill date for display
+    const formatRefillDate = (isoDate: string | null): string => {
+        if (!isoDate) return 'in 5 days';
+        const refillDate = new Date(isoDate);
+        const now = new Date();
+        const diffMs = refillDate.getTime() - now.getTime();
+
+        if (diffMs <= 0) return 'soon';
+
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+        if (diffDays > 0) {
+            return `in ${diffDays}d ${diffHours}h`;
+        } else if (diffHours > 0) {
+            return `in ${diffHours}h`;
+        } else {
+            const diffMins = Math.floor(diffMs / (1000 * 60));
+            return `in ${diffMins}m`;
+        }
+    };
     const [searchParams, setSearchParams] = useSearchParams();
 
     // Navigation warning state for tailoring mode
@@ -357,10 +379,21 @@ export const Layout = () => {
                     <div className="flex items-center gap-2 sm:gap-4">
                         {/* Credit Badge */}
                         {credits !== null && (
-                            <div className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 rounded-full border transition-colors ${credits < 30 ? 'bg-red-500/10 border-red-500/20 text-red-400 animate-pulse' :
-                                'bg-yellow-500/10 border-yellow-500/20 text-yellow-500'
-                                }`}>
-                                <span className="text-xs sm:text-sm font-bold">⚡ {credits}</span>
+                            <div
+                                className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 rounded-full border transition-colors cursor-help ${
+                                    credits === 0 ? 'bg-red-500/20 border-red-500/30 text-red-400' :
+                                    credits < 30 ? 'bg-red-500/10 border-red-500/20 text-red-400 animate-pulse' :
+                                    'bg-yellow-500/10 border-yellow-500/20 text-yellow-500'
+                                }`}
+                                title={credits === 0
+                                    ? `Out of credits! Refills ${formatRefillDate(nextRefillAt)}`
+                                    : credits < 30
+                                    ? `Low credits! Need 30 for AI features. Refills ${formatRefillDate(nextRefillAt)}`
+                                    : `${credits} credits remaining. Refills ${formatRefillDate(nextRefillAt)}`}
+                            >
+                                <span className="text-xs sm:text-sm font-bold">
+                                    {credits === 0 ? '⚡ Empty' : `⚡ ${credits}`}
+                                </span>
                             </div>
                         )}
                         <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">

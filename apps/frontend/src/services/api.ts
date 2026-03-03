@@ -70,14 +70,28 @@ export async function deleteProfile(id: string): Promise<void> {
 
 // Jobs API calls
 
+export interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+export interface PaginatedJobsResponse {
+  jobs: any[];
+  pagination: PaginationInfo;
+}
+
 /**
  * Get jobs with match scores for the current user's active profile
+ * Supports pagination with page and limit parameters
  */
-export async function getMatchedJobs(): Promise<any[]> {
-  const response = await fetchWithAuth('/api/jobs/matched');
+export async function getMatchedJobs(page = 1, limit = 20): Promise<PaginatedJobsResponse> {
+  const response = await fetchWithAuth(`/api/jobs/matched?page=${page}&limit=${limit}`);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Failed to fetch matched jobs');
-  return data.jobs;
+  return { jobs: data.jobs, pagination: data.pagination };
 }
 
 /**
@@ -144,9 +158,88 @@ export async function getVectorMatchScore(resumeText: string, jobDescription: st
 }
 
 // Credits API
-export async function getCredits(): Promise<number> {
+export interface CreditsResponse {
+  credits: number;
+  nextRefillAt: string; // ISO date string
+}
+
+export async function getCredits(): Promise<CreditsResponse> {
   const response = await fetchWithAuth('/api/credits/balance');
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Failed to fetch credits');
-  return data.credits;
+  return { credits: data.credits, nextRefillAt: data.nextRefillAt };
+}
+
+// Resume Analysis API
+export interface AnalysisIssue {
+  type: 'error' | 'warning' | 'info' | 'success';
+  category: 'structure' | 'content' | 'ats' | 'impact' | 'completeness';
+  message: string;
+  field?: string;
+  suggestion?: string;
+  priority: number;
+}
+
+export interface SectionAnalysis {
+  name: string;
+  score: number;
+  status: 'excellent' | 'good' | 'needs_work' | 'missing' | 'critical';
+  issues: string[];
+  suggestions: string[];
+}
+
+export interface ResumeAnalysisResult {
+  overallScore: number;
+  letterGrade: string;
+  summary: string;
+  scores: {
+    completeness: number;
+    impact: number;
+    atsCompatibility: number;
+    clarity: number;
+    relevance: number;
+  };
+  sectionAnalysis: SectionAnalysis[];
+  issues: AnalysisIssue[];
+  topPriorities: string[];
+  strengths: string[];
+  keywords: {
+    found: string[];
+    missing: string[];
+    industryRelevant: string[];
+  };
+  metrics: {
+    bulletPointsWithNumbers: number;
+    totalBulletPoints: number;
+    percentageQuantified: number;
+  };
+  actionVerbs: {
+    strong: string[];
+    weak: string[];
+    suggestions: string[];
+  };
+}
+
+/**
+ * Analyze resume data and get personalized feedback
+ * Can be used during onboarding before profile is saved
+ */
+export async function analyzeResume(resumeData: any, useAI = false): Promise<ResumeAnalysisResult> {
+  const response = await fetchWithAuth('/api/profiles/analyze', {
+    method: 'POST',
+    body: JSON.stringify({ resumeData, useAI }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to analyze resume');
+  return data.analysis;
+}
+
+/**
+ * Analyze an existing profile
+ */
+export async function analyzeProfile(profileId: string, useAI = false): Promise<ResumeAnalysisResult> {
+  const response = await fetchWithAuth(`/api/profiles/${profileId}/analyze?ai=${useAI}`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to analyze profile');
+  return data.analysis;
 }

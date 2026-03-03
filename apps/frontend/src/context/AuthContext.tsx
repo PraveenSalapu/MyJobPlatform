@@ -17,6 +17,7 @@ interface AuthContextType {
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   credits: number | null;
+  nextRefillAt: string | null; // ISO date string for next credit refill
   refreshCredits: () => Promise<void>;
 }
 
@@ -25,6 +26,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
+  const [nextRefillAt, setNextRefillAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { addToast } = useToast();
   const previousUserId = useRef<string | null>(null);
@@ -72,11 +74,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshCredits = async () => {
     if (user) {
       try {
-        const balance = await getCredits();
+        const { credits: balance, nextRefillAt: refillDate } = await getCredits();
         setCredits(balance);
+        setNextRefillAt(refillDate);
       } catch (e) {
         console.error('Failed to refresh credits:', e);
-        // Only show toast if it's a persistent error to avoid spam, 
+        // Only show toast if it's a persistent error to avoid spam,
         // but for debugging this installation issue, it's helpful.
         addToast('error', 'Could not load credits. Did you run the SQL migration?');
       }
@@ -84,8 +87,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    if (user) refreshCredits();
-    else setCredits(null);
+    if (user) {
+      refreshCredits();
+    } else {
+      setCredits(null);
+      setNextRefillAt(null);
+    }
   }, [user]);
 
   const login = async (email: string, password: string) => {
@@ -106,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearCache();
     setUser(null);
     setCredits(null);
+    setNextRefillAt(null);
   };
 
   return (
@@ -118,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         credits,
+        nextRefillAt,
         refreshCredits,
       }}
     >

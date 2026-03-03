@@ -116,14 +116,38 @@ router.get('/balance', authenticateToken, async (req: Request, res: Response) =>
             res.status(401).json({ error: 'User ID not found' });
             return;
         }
-        const credits = await refillCreditsIfDue(userId);
-        console.log('[Credits] Returning balance:', credits);
+        const { credits, nextRefillAt } = await getCreditsWithRefillDate(userId);
+        console.log('[Credits] Returning balance:', credits, 'next refill:', nextRefillAt);
         res.setHeader('Cache-Control', 'no-store');
-        res.json({ credits });
+        res.json({ credits, nextRefillAt });
     } catch (error) {
         console.error('Error fetching balance:', error);
         res.status(500).json({ error: 'Failed to fetch credit balance' });
     }
 });
+
+// Helper: Get credits and next refill date
+async function getCreditsWithRefillDate(userId: string): Promise<{ credits: number; nextRefillAt: string }> {
+    const supabase = getSupabase();
+
+    // First ensure refill happens if due
+    const credits = await refillCreditsIfDue(userId);
+
+    // Get the last refill timestamp
+    const { data: usage } = await supabase
+        .from('user_usage')
+        .select('last_refill_at')
+        .eq('user_id', userId)
+        .single();
+
+    // Calculate next refill date
+    const lastRefill = usage?.last_refill_at ? new Date(usage.last_refill_at) : new Date();
+    const nextRefill = new Date(lastRefill.getTime() + REFILL_INTERVAL);
+
+    return {
+        credits,
+        nextRefillAt: nextRefill.toISOString()
+    };
+}
 
 export default router;
