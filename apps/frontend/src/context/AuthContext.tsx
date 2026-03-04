@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, type ReactNode 
 import { supabase } from '../services/supabase';
 import { getCredits } from '../services/api';
 import { clearCache } from '../services/storage';
+import { useToast } from './ToastContext';
 
 // Clears the local IndexedDB used for offline application tracking.
 // Called on logout and user-switch to prevent cross-user data leaks.
@@ -12,7 +13,6 @@ function clearIndexedDB() {
     // Non-fatal — browser may not support IndexedDB or it may already be absent
   }
 }
-import { useToast } from './ToastContext';
 
 interface User {
   id: string;

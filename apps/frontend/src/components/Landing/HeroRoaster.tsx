@@ -166,7 +166,7 @@ export const HeroRoaster: React.FC<HeroRoasterProps> = ({ onScanComplete, onProf
                     type: 'SET_SCAN_RESULTS',
                     payload: {
                         score: 0,
-                        issues: [{ type: 'error', message: 'Parsing failed. Please enter data manually.' }],
+                        issues: [{ type: 'error', category: 'structure', priority: 1, message: 'Parsing failed. Please enter data manually.' }],
                         missingKeywords: []
                     }
                 });
