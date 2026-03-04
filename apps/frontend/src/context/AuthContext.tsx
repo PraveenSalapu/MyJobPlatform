@@ -90,9 +90,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setNextRefillAt(refillDate);
       } catch (e) {
         console.error('Failed to refresh credits:', e);
-        // Only show toast if it's a persistent error to avoid spam,
-        // but for debugging this installation issue, it's helpful.
-        addToast('error', 'Could not load credits. Did you run the SQL migration?');
+        const msg = e instanceof Error ? e.message : String(e);
+        const isNetworkError = msg.includes('fetch') || msg.includes('network') || msg.includes('ECONNREFUSED');
+        const hint = isNetworkError
+          ? 'Backend unreachable. Is it running on port 3001?'
+          : 'Could not load credits. Check backend logs.';
+        addToast('error', hint);
       }
     }
   };

@@ -39,9 +39,15 @@ if (missing.length > 0) {
   }
 }
 
-// Warn about API URL in production
+// Warn about API URL misconfiguration
 if (isProd && config.apiUrl.includes('localhost')) {
   console.error('[CRITICAL] VITE_API_URL is not set! API calls will fail.');
+}
+if (isDev && !config.apiUrl.includes('localhost') && !config.apiUrl.includes('127.0.0.1')) {
+  console.warn(
+    `[DEV] VITE_API_URL="${config.apiUrl}" points to a remote server.\n` +
+    `      For local dev, set VITE_API_URL=http://localhost:3001 in your .env`
+  );
 }
 
 export default config;
