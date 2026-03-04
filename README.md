@@ -158,7 +158,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 **Praveen Salapu**
 - GitHub: [@PraveenSalapu](https://github.com/PraveenSalapu)
-- LinkedIn: [Connect with me](https://linkedin.com/in/yourprofile)
+- LinkedIn: [Connect with me](https://linkedin.com/in/saisalapu)
 
 ## 🙏 Acknowledgments
 
