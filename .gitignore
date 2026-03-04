@@ -62,6 +62,9 @@ Thumbs.db
 *.sw?
 *.swp
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
 # Caches
 .eslintcache
 .stylelintcache
