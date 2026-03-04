@@ -3,7 +3,7 @@ import type { Resume, SectionConfig, Demographics, AtsScan } from '../types';
 import { initialResume } from '../data/initialState';
 
 type ResumeState = Resume & {
-    selectedTemplate?: 'modern' | 'classic' | 'minimalist';
+    selectedTemplate?: 'modern' | 'classic' | 'minimalist' | 'jake';
     isTailoring?: boolean;
     tailoringJob?: {
         title: string;
@@ -25,7 +25,7 @@ type ResumeAction =
     | { type: 'UPDATE_ITEM'; payload: { sectionId: keyof Resume; itemId: string; item: any } }
     | { type: 'REORDER_SECTIONS'; payload: SectionConfig[] }
     | { type: 'RESET_RESUME' }
-    | { type: 'SET_TEMPLATE'; payload: 'modern' | 'classic' | 'minimalist' }
+    | { type: 'SET_TEMPLATE'; payload: 'modern' | 'classic' | 'minimalist' | 'jake' }
     | { type: 'SET_FONT'; payload: 'professional' | 'modern' | 'technical' }
     | { type: 'SET_PAGE_SIZE'; payload: 'A4' | 'LETTER' }
     | { type: 'START_TAILORING'; payload?: { job?: { title: string; company: string; description: string; link?: string } } }

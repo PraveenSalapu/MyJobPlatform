@@ -3,6 +3,7 @@ import type { Resume } from '../../types';
 import { ModernPDF } from './templates/ModernPDF';
 import { ClassicPDF } from './templates/ClassicPDF';
 import { MinimalistPDF } from './templates/MinimalistPDF';
+import { JakePDF } from './templates/JakePDF';
 
 // Register custom fonts
 Font.register({
@@ -24,6 +25,8 @@ export const ResumePDF = ({ resume }: ResumePDFProps) => {
                 return <ClassicPDF resume={resume} />;
             case 'minimalist':
                 return <MinimalistPDF resume={resume} />;
+            case 'jake':
+                return <JakePDF resume={resume} />;
             case 'modern':
             default:
                 return <ModernPDF resume={resume} />;

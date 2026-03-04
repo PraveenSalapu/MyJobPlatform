@@ -117,7 +117,7 @@ export interface Resume {
   skills: SkillGroup[];
   projects: ProjectItem[];
   certifications: CertificationItem[];
-  selectedTemplate?: 'modern' | 'classic' | 'minimalist';
+  selectedTemplate?: 'modern' | 'classic' | 'minimalist' | 'jake';
   selectedFont?: 'professional' | 'modern' | 'technical';
   pageSize?: 'A4' | 'LETTER';
   layout?: LayoutSettings;

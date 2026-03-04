@@ -56,6 +56,23 @@ export const TEMPLATE_DEFAULTS = {
         contactSize: 9,
         fontFamily: 'Helvetica',
     },
+    // Jake's Resume — compact academic/professional layout
+    // Inspired by Jake Gutierrez's popular LaTeX resume template
+    jake: {
+        ...DEFAULT_LAYOUT,
+        fontSize: 10,
+        nameSize: 18,
+        contactSize: 9,
+        fontFamily: 'Times-Roman',
+        lineHeight: 1.3,
+        sectionSpacing: 3,
+        margin: {
+            top: 12,
+            right: 16,
+            bottom: 12,
+            left: 16,
+        },
+    },
 } as const;
 
 // Helper to convert mm value to pt
