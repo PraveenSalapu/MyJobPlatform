@@ -61,20 +61,24 @@ export const config = {
 };
 
 // Validate required environment variables at startup
+// All vars here are checked with .trim() so empty strings also fail validation
 export function validateEnvironment(): void {
   const requiredVars = [
     'VITE_SUPABASE_URL',
     'SUPABASE_SERVICE_ROLE_KEY',
+    'SUPABASE_JWT_SECRET', // Required by auth middleware for offline JWT verification
     'GEMINI_API_KEY',
   ];
 
-  const missing = requiredVars.filter(v => !process.env[v]);
+  const missing = requiredVars.filter(v => !process.env[v]?.trim());
 
   if (missing.length > 0) {
-    console.warn(`⚠️  Missing environment variables: ${missing.join(', ')}`);
+    const message = `Missing required environment variables: ${missing.join(', ')}`;
     if (config.isProduction) {
-      throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+      // Hard fail in production — do not start with missing secrets
+      throw new Error(message);
     }
+    console.warn(`⚠️  ${message}`);
   }
 
   // Log CORS configuration in development

@@ -90,6 +90,22 @@ export interface TailoringJob {
   link?: string;
 }
 
+export interface Demographics {
+  gender?: string;
+  pronouns?: string;
+  isHispanic?: string;
+  race?: string;
+  isLGBTQ?: string;
+  sexualOrientation?: string;
+  veteranStatus?: string;
+  disabilityStatus?: string;
+  availability?: string;
+  salaryExpectation?: string;
+  relocation?: string;
+  workAuthorization?: string;
+  requiresSponsorship?: boolean;
+}
+
 export interface Resume {
   id: string;
   title: string;
@@ -108,6 +124,7 @@ export interface Resume {
   isTailoring?: boolean;
   tailoringJob?: TailoringJob;
   originalResume?: Resume;
+  demographics?: Demographics;
 }
 
 export interface UserProfile {

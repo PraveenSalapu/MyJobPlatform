@@ -1331,7 +1331,7 @@ async function handleTailorResume(
 
     // Encode job data for URL
     const encodedData = encodeURIComponent(JSON.stringify(jobData));
-    const appUrl = `${APP_URL}/editor?tailor=true&jobData=${encodedData}`;
+    const appUrl = `${APP_URL}/app?tailor=true&jobData=${encodedData}`;
 
     btn.textContent = '🚀 Opening app...';
 

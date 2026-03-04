@@ -3,7 +3,7 @@ import { useResume } from '../../context/ResumeContext';
 import { WifiOff, RefreshCw, ArrowDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { fetchJobsFromDB } from '../../services/database/supabase';
 import type { FetchJobsResult } from '../../services/database/supabase';
-import { refreshMatchScores } from '../../services/api';
+import { refreshMatchScores, createPendingAutofill } from '../../services/api';
 import type { PaginationInfo } from '../../services/api';
 import type { Job } from '../../types';
 import { JobCard } from './JobCard';
@@ -148,20 +148,18 @@ export const JobTable: React.FC = () => {
         try {
             // Stage for Extension (Mirroring PreviewPanel logic + LocalStorage Fallback)
             const payload = {
+                profileId: resumeToUse.id, // Mandatory for BE schema
                 jobUrl: job.link,
                 jobTitle: job.title,
                 company: job.company,
-                tailoredResume: isTailoringThisJob ? resume : null, // If null, backend/extension uses profile
+                jobDescription: job.summary || '',
+                tailoredResume: isTailoringThisJob ? resume : resumeToUse, // Send actual profile data
                 timestamp: Date.now()
             };
 
             // A. Try API (Persistent Staging)
             try {
-                await fetch('/api/autofill/pending', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+                await createPendingAutofill(payload);
             } catch (e) {
                 console.warn("API Autofill stage failed, falling back to local storage", e);
             }
@@ -394,11 +392,10 @@ export const JobTable: React.FC = () => {
                                             <button
                                                 key={pageNum}
                                                 onClick={() => handlePageChange(pageNum)}
-                                                className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
-                                                    currentPage === pageNum
+                                                className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${currentPage === pageNum
                                                         ? 'bg-indigo-600 text-white'
                                                         : 'bg-gray-900 border border-gray-700 text-gray-300 hover:border-indigo-500'
-                                                }`}
+                                                    }`}
                                             >
                                                 {pageNum}
                                             </button>

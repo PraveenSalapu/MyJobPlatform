@@ -1,118 +1,110 @@
-
-import { Router, Request, Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router: Router = Router();
 
-// Lazy-initialized Supabase client (reusing pattern from profiles.ts)
-let _supabase: SupabaseClient | null = null;
-function getSupabase(): SupabaseClient {
-    if (!_supabase) {
-        _supabase = createClient(
-            process.env.VITE_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-        );
-    }
-    return _supabase;
-}
-
-// Apply authentication to all routes
 router.use(authenticateToken);
 
+// ---------------------------------------------------------------------------
 // Validation schemas
+// ---------------------------------------------------------------------------
+
+const STATUS = z.enum(['saved', 'applied', 'screening', 'interviewing', 'offer', 'rejected', 'accepted', 'withdrawn']);
+
 const createApplicationSchema = z.object({
     company: z.string().min(1, 'Company is required'),
     jobTitle: z.string().min(1, 'Job Title is required'),
     jobUrl: z.string().optional(),
     location: z.string().optional(),
-    status: z.enum(['saved', 'applied', 'screening', 'interviewing', 'offer', 'rejected', 'accepted', 'withdrawn']).optional(),
-    appliedDate: z.string().optional(), // ISO date string
-    source: z.string().optional(),
-    notes: z.string().optional(),
-    salaryText: z.string().optional(),
-    resumeVersion: z.string().uuid().optional(), // Valid UUID for linked profile
-});
-
-const updateApplicationSchema = z.object({
-    company: z.string().optional(),
-    jobTitle: z.string().optional(),
-    jobUrl: z.string().optional(),
-    location: z.string().optional(),
-    status: z.enum(['saved', 'applied', 'screening', 'interviewing', 'offer', 'rejected', 'accepted', 'withdrawn']).optional(),
+    status: STATUS.optional(),
     appliedDate: z.string().optional(),
     source: z.string().optional(),
     notes: z.string().optional(),
     salaryText: z.string().optional(),
     resumeVersion: z.string().uuid().optional(),
-    timeline: z.array(z.object({
-        date: z.string(),
-        status: z.string(),
-        notes: z.string().optional()
-    })).optional(),
 });
 
-// GET /api/applications - Get all applications for current user
+// Use nullable() so callers can explicitly clear optional text fields
+const updateApplicationSchema = z.object({
+    company: z.string().optional(),
+    jobTitle: z.string().optional(),
+    jobUrl: z.string().nullable().optional(),
+    location: z.string().nullable().optional(),
+    status: STATUS.optional(),
+    appliedDate: z.string().optional(),
+    source: z.string().optional(),
+    notes: z.string().nullable().optional(),      // null = clear the field
+    salaryText: z.string().nullable().optional(),
+    resumeVersion: z.string().uuid().optional(),
+    timeline: z
+        .array(z.object({ date: z.string(), status: z.string(), notes: z.string().optional() }))
+        .optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function toApiApplication(app: Record<string, any>) {
+    return {
+        id: app.id,
+        userId: app.user_id,
+        company: app.company,
+        jobTitle: app.job_title,
+        jobUrl: app.job_url,
+        location: app.location,
+        status: app.status,
+        appliedDate: app.applied_date,
+        source: app.source,
+        notes: app.notes,
+        salaryText: app.salary_text,
+        timeline: app.timeline,
+        resumeVersion: app.resume_version,
+        resumeSnapshot: (app.resume_snapshot as any)?.data,
+        createdAt: app.created_at,
+        updatedAt: app.updated_at,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/applications
+// ---------------------------------------------------------------------------
+
 router.get('/', async (req: Request, res: Response) => {
     try {
-        const userId = req.userId;
-
-        // Join with profiles table to get resume data
-        const { data: applications, error } = await getSupabase()
+        const { data: applications, error } = await supabase
             .from('applications')
             .select('*, resume_snapshot:profiles!resume_version(data)')
-            .eq('user_id', userId)
+            .eq('user_id', req.userId)
             .order('applied_date', { ascending: false });
 
         if (error) {
-            console.error('Error fetching applications:', error);
+            console.error('[applications] GET / error:', error);
             res.status(500).json({ error: 'Failed to fetch applications' });
             return;
         }
 
-        // Transform snake_case DB to camelCase API
-        const transformed = applications.map(app => ({
-            id: app.id,
-            userId: app.user_id,
-            company: app.company,
-            jobTitle: app.job_title,
-            jobUrl: app.job_url,
-            location: app.location,
-            status: app.status,
-            appliedDate: app.applied_date,
-            source: app.source,
-            notes: app.notes,
-            salaryText: app.salary_text,
-            timeline: app.timeline,
-            resumeVersion: app.resume_version,
-            resumeSnapshot: (app.resume_snapshot as any)?.data, // Extract nested data
-            createdAt: app.created_at,
-            updatedAt: app.updated_at,
-        }));
-
-        res.json({
-            success: true,
-            applications: transformed,
-        });
+        res.json({ success: true, applications: applications.map(toApiApplication) });
     } catch (error) {
-        console.error('Get applications error:', error);
+        console.error('[applications] GET / error:', error);
         res.status(500).json({ error: 'Failed to fetch applications' });
     }
 });
 
-// GET /api/applications/:id - Get specific application
+// ---------------------------------------------------------------------------
+// GET /api/applications/:id
+// ---------------------------------------------------------------------------
+
 router.get('/:id', async (req: Request, res: Response) => {
     try {
-        const userId = req.userId;
-        const { id } = req.params;
-
-        const { data: app, error } = await getSupabase()
+        const { data: app, error } = await supabase
             .from('applications')
             .select('*, resume_snapshot:profiles!resume_version(data)')
-            .eq('id', id)
-            .eq('user_id', userId)
+            .eq('id', req.params.id)
+            .eq('user_id', req.userId)
             .single();
 
         if (error || !app) {
@@ -120,39 +112,20 @@ router.get('/:id', async (req: Request, res: Response) => {
             return;
         }
 
-        res.json({
-            success: true,
-            application: {
-                id: app.id,
-                userId: app.user_id,
-                company: app.company,
-                jobTitle: app.job_title,
-                jobUrl: app.job_url,
-                location: app.location,
-                status: app.status,
-                appliedDate: app.applied_date,
-                source: app.source,
-                notes: app.notes,
-                salaryText: app.salary_text,
-                timeline: app.timeline,
-                resumeVersion: app.resume_version,
-                resumeSnapshot: (app.resume_snapshot as any)?.data,
-                createdAt: app.created_at,
-                updatedAt: app.updated_at,
-            },
-        });
+        res.json({ success: true, application: toApiApplication(app) });
     } catch (error) {
-        console.error('Get application error:', error);
+        console.error('[applications] GET /:id error:', error);
         res.status(500).json({ error: 'Failed to fetch application' });
     }
 });
 
-// POST /api/applications - Create new application
+// ---------------------------------------------------------------------------
+// POST /api/applications
+// ---------------------------------------------------------------------------
+
 router.post('/', async (req: Request, res: Response) => {
     try {
-        const userId = req.userId;
         const validation = createApplicationSchema.safeParse(req.body);
-
         if (!validation.success) {
             res.status(400).json({ error: validation.error.errors[0].message });
             return;
@@ -160,65 +133,61 @@ router.post('/', async (req: Request, res: Response) => {
 
         const {
             company, jobTitle, jobUrl, location, status,
-            appliedDate, source, notes, salaryText, resumeVersion
+            appliedDate, source, notes, salaryText, resumeVersion,
         } = validation.data;
 
         const appId = uuidv4();
         const now = new Date().toISOString();
+        const initialStatus = status || 'saved';
 
-        const { error } = await getSupabase().from('applications').insert({
+        const { error } = await supabase.from('applications').insert({
             id: appId,
-            user_id: userId,
+            user_id: req.userId,
             company,
             job_title: jobTitle,
             job_url: jobUrl,
             location,
-            status: status || 'saved',
+            status: initialStatus,
             applied_date: appliedDate || now,
             source: source || 'Manual Entry',
             notes,
             salary_text: salaryText,
-            resume_version: resumeVersion, // Link to profile
-            timeline: [{ date: now, status: status || 'saved', notes: 'Application created' }],
+            resume_version: resumeVersion,
+            timeline: [{ date: now, status: initialStatus, notes: 'Application created' }],
             created_at: now,
             updated_at: now,
         });
 
         if (error) {
-            console.error('Error creating application:', error);
+            console.error('[applications] POST / insert error:', error);
             res.status(500).json({ error: 'Failed to create application' });
             return;
         }
 
-        res.status(201).json({
-            success: true,
-            application: {
-                id: appId,
-                userId,
-                // ... return other fields as needed, mostly for confirmation
-            }
-        });
-
+        res.status(201).json({ success: true, application: { id: appId, userId: req.userId } });
     } catch (error) {
-        console.error('Create application error:', error);
+        console.error('[applications] POST / error:', error);
         res.status(500).json({ error: 'Failed to create application' });
     }
 });
 
-// PUT /api/applications/:id - Update application
+// ---------------------------------------------------------------------------
+// PUT /api/applications/:id
+// ---------------------------------------------------------------------------
+
 router.put('/:id', async (req: Request, res: Response) => {
     try {
-        const userId = req.userId;
         const { id } = req.params;
-        const validation = updateApplicationSchema.safeParse(req.body);
+        const userId = req.userId!;
 
+        const validation = updateApplicationSchema.safeParse(req.body);
         if (!validation.success) {
             res.status(400).json({ error: validation.error.errors[0].message });
             return;
         }
 
         // Verify ownership
-        const { data: existing } = await getSupabase()
+        const { data: existing } = await supabase
             .from('applications')
             .select('id')
             .eq('id', id)
@@ -230,63 +199,57 @@ router.put('/:id', async (req: Request, res: Response) => {
             return;
         }
 
-        const updates: any = {
-            updated_at: new Date().toISOString(),
-        };
-
-        // Map camelCase to snake_case
         const v = validation.data;
-        if (v.company) updates.company = v.company;
-        if (v.jobTitle) updates.job_title = v.jobTitle;
-        if (v.jobUrl) updates.job_url = v.jobUrl;
-        if (v.location) updates.location = v.location;
-        if (v.status) updates.status = v.status;
-        if (v.appliedDate) updates.applied_date = v.appliedDate;
-        if (v.source) updates.source = v.source;
-        if (v.notes) updates.notes = v.notes;
-        if (v.salaryText) updates.salary_text = v.salaryText;
-        if (v.timeline) updates.timeline = v.timeline;
+        const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
-        const { error } = await getSupabase()
-            .from('applications')
-            .update(updates)
-            .eq('id', id);
+        // Use !== undefined so null is allowed to explicitly clear nullable fields
+        if (v.company !== undefined) updates.company = v.company;
+        if (v.jobTitle !== undefined) updates.job_title = v.jobTitle;
+        if (v.jobUrl !== undefined) updates.job_url = v.jobUrl;
+        if (v.location !== undefined) updates.location = v.location;
+        if (v.status !== undefined) updates.status = v.status;
+        if (v.appliedDate !== undefined) updates.applied_date = v.appliedDate;
+        if (v.source !== undefined) updates.source = v.source;
+        if (v.notes !== undefined) updates.notes = v.notes;
+        if (v.salaryText !== undefined) updates.salary_text = v.salaryText;
+        if (v.timeline !== undefined) updates.timeline = v.timeline;
+
+        const { error } = await supabase.from('applications').update(updates).eq('id', id);
 
         if (error) {
-            console.error('Error updating application:', error);
+            console.error('[applications] PUT /:id error:', error);
             res.status(500).json({ error: 'Failed to update application' });
             return;
         }
 
         res.json({ success: true });
-
     } catch (error) {
-        console.error('Update application error:', error);
+        console.error('[applications] PUT /:id error:', error);
         res.status(500).json({ error: 'Failed to update application' });
     }
 });
 
-// DELETE /api/applications/:id - Delete application
+// ---------------------------------------------------------------------------
+// DELETE /api/applications/:id
+// ---------------------------------------------------------------------------
+
 router.delete('/:id', async (req: Request, res: Response) => {
     try {
-        const userId = req.userId;
-        const { id } = req.params;
-
-        const { error } = await getSupabase()
+        const { error } = await supabase
             .from('applications')
             .delete()
-            .eq('id', id)
-            .eq('user_id', userId); // Ensure ownership
+            .eq('id', req.params.id)
+            .eq('user_id', req.userId); // Ownership guard directly on delete
 
         if (error) {
-            console.error('Error deleting application:', error);
+            console.error('[applications] DELETE /:id error:', error);
             res.status(500).json({ error: 'Failed to delete application' });
             return;
         }
 
         res.json({ success: true });
     } catch (error) {
-        console.error('Delete application error:', error);
+        console.error('[applications] DELETE /:id error:', error);
         res.status(500).json({ error: 'Failed to delete application' });
     }
 });

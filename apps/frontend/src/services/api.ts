@@ -5,7 +5,15 @@ import config from '../config/environment';
 
 const API_BASE = config.apiUrl;
 
-// Make authenticated API request
+/**
+ * Make an authenticated API request.
+ *
+ * Throws an Error for:
+ *   - missing session (not authenticated)
+ *   - non-2xx HTTP responses (error message taken from JSON body if available)
+ *
+ * Callers no longer need to check `response.ok` — a thrown error means failure.
+ */
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}): Promise<Response> {
   const { data: { session } } = await supabase.auth.getSession();
   const accessToken = session?.access_token;
@@ -24,7 +32,21 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
   });
 
   if (!response.ok) {
-    // Handle specific error cases if needed
+    // Attempt to parse error message from JSON body; fall back to status text.
+    let message = `HTTP ${response.status}: ${response.statusText}`;
+    try {
+      const body = await response.clone().json();
+      if (body?.error) message = body.error;
+    } catch {
+      // Non-JSON error body — keep the status-based message
+    }
+
+    // 401 means the session expired; the auth context will handle token refresh
+    if (response.status === 401) {
+      throw Object.assign(new Error(message), { status: 401 });
+    }
+
+    throw new Error(message);
   }
 
   return response;
@@ -66,6 +88,17 @@ export async function deleteProfile(id: string): Promise<void> {
     const data = await response.json();
     throw new Error(data.error || 'Failed to delete profile');
   }
+}
+
+// Autofill Edge / Extension Bridge
+export async function createPendingAutofill(payload: any): Promise<any> {
+  const response = await fetchWithAuth('/api/autofill/pending', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to stage autofill data');
+  return data;
 }
 
 // Jobs API calls

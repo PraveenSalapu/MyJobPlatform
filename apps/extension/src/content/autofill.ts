@@ -219,27 +219,46 @@ function detectFieldPurpose(element: HTMLElement): { purpose: FieldPurpose; conf
     element.getAttribute('autocomplete'),
   ].filter(Boolean).join(' ').toLowerCase();
 
-  // Also check associated label - but ONLY for attributes, not full question text
-  // This prevents matching words like "tell" in "tell us about..."
+  // Tier 2: Heuristic Label Proximity Search (SpeedyApply reverse-engineered method)
   let labelText = '';
+
+  // 1. Explicit ID association
   const id = element.getAttribute('id');
   if (id) {
     const label = document.querySelector(`label[for="${id}"]`);
-    if (label) {
-      // Only use first 50 chars of label to avoid matching essay question text
-      const fullLabel = label.textContent?.toLowerCase() || '';
-      labelText = fullLabel.substring(0, 50);
-    }
+    if (label) labelText += ' ' + (label.textContent || '');
   }
 
-  // Check parent label - but only immediate text, not full question
+  // 2. Implicit Parent Label wrap
   const parentLabel = element.closest('label');
-  if (parentLabel) {
-    const text = parentLabel.textContent?.toLowerCase() || '';
-    labelText += ' ' + text.substring(0, 50);
+  if (parentLabel) labelText += ' ' + (parentLabel.textContent || '');
+
+  // 3. Aria-LabelledBy relationship
+  const labelledBy = element.getAttribute('aria-labelledby');
+  if (labelledBy) {
+    const labelEl = document.getElementById(labelledBy);
+    if (labelEl) labelText += ' ' + (labelEl.textContent || '');
   }
 
-  const searchText = attributes + ' ' + labelText;
+  // 4. Proximity sibiling heuristic (common in React/Vue SPAs where inputs and labels are disconnected)
+  const previousSibling = element.previousElementSibling;
+  if (previousSibling && /label|span|div/i.test(previousSibling.tagName)) {
+    labelText += ' ' + (previousSibling.textContent || '');
+  }
+
+  // 5. Parent container heading (common for radio button groups like standard gender/veteran selects)
+  const container = element.closest('fieldset, .form-group, .field-wrapper, [role="group"]');
+  if (container) {
+    const legend = container.querySelector('legend, .label-text, span');
+    if (legend) labelText += ' ' + (legend.textContent || '');
+  }
+
+  // Clean strings
+  const cleanLabelText = labelText.replace(/[\n\r]/g, ' ').replace(/\s{2,}/g, ' ').toLowerCase();
+
+  // We cap matching text length intentionally so we don't accidentally parse essays
+  // Demographics questions can be long, so cap is around 150 chars.
+  const searchText = attributes + ' ' + cleanLabelText.substring(0, 150);
 
   // Check autocomplete attribute first (high confidence)
   const autocomplete = element.getAttribute('autocomplete');
@@ -650,6 +669,15 @@ export async function fillFormFields(
   for (const field of manualFields) {
     const label = field.purpose === 'resume' ? 'Upload your resume' : 'Enter cover letter';
     highlightElement(field.element, label);
+  }
+
+  // Auto-Advance Check (Tier 3 Module)
+  // If we filled data and are structurally confident, push next phase
+  if (filled > 0 && fillableFields.length === filled) {
+    // Optionally wait a second to make sure form validations have passed
+    await sleep(800);
+    // Auto click next
+    await attemptAutoAdvance();
   }
 
   return {
@@ -1119,4 +1147,24 @@ async function fillCoverLetterField(element: HTMLTextAreaElement, text: string):
     console.error('[CareerFlow] Error filling cover letter:', error);
     return false;
   }
+}
+
+// Experimental Auto-Advance Scanner
+export async function attemptAutoAdvance(): Promise<boolean> {
+  // Looking for common job application advancement labels
+  const advanceRegex = /(^next$|^continue$|^save.*continue$|^submit.*application$|^submit$|^apply$)/i;
+
+  // Find all buttons or functional look-a-likes
+  const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"], a.btn, a.button, [role="button"]'));
+
+  for (const btn of buttons) {
+    const text = (btn.textContent || (btn as HTMLInputElement).value || '').trim();
+    if (advanceRegex.test(text) && isElementVisible(btn as HTMLElement) && !(btn as HTMLButtonElement).disabled) {
+      console.log(`[CareerFlow Auto-Advance] Clicking forward matching pattern: "${text}"`);
+      (btn as HTMLElement).click();
+      return true;
+    }
+  }
+
+  return false;
 }

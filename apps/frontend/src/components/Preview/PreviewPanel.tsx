@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { useResume } from '../../context/ResumeContext';
 import { ModernTemplate } from './templates/ModernTemplate';
 import { ClassicTemplate } from './templates/ClassicTemplate';
-import { Layout, Type, Briefcase, ExternalLink, Loader2, CheckCircle2, Link2, X } from 'lucide-react';
+import { Layout, Type, Briefcase, ExternalLink, Loader2, CheckCircle2, Link2, X, Download } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { PDFDownloadLink } from '@react-pdf/renderer';
+import { ResumePDF } from '../PDF/ResumePDF';
 import { getDatabase } from '../../services/database/mongodb';
 import { v4 } from 'uuid';
 import { fetchWithAuth } from '../../services/api';
@@ -177,8 +179,8 @@ export const PreviewPanel = () => {
                                         key={t.id}
                                         onClick={() => dispatch({ type: 'SET_TEMPLATE', payload: t.id })}
                                         className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${isActive
-                                                ? 'bg-indigo-600 text-white shadow-sm'
-                                                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                                            ? 'bg-indigo-600 text-white shadow-sm'
+                                            : 'text-gray-400 hover:text-white hover:bg-gray-800'
                                             }`}
                                     >
                                         <Icon size={14} />
@@ -187,6 +189,27 @@ export const PreviewPanel = () => {
                                 );
                             })}
                         </div>
+                    </div>
+
+                    {/* Download PDF Button */}
+                    <div className="flex items-center ml-auto md:ml-4">
+                        <PDFDownloadLink
+                            document={<ResumePDF resume={debouncedResume} />}
+                            fileName={`${resume.personalInfo?.fullName?.replace(/\s+/g, '_') || 'My'}_Resume.pdf`}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors shadow-[0_0_15px_rgba(79,70,229,0.3)]"
+                        >
+                            {({ loading }) => (
+                                loading ? (
+                                    <>
+                                        <Loader2 size={16} className="animate-spin" /> Preparing PDF...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Download size={16} /> Download
+                                    </>
+                                )
+                            )}
+                        </PDFDownloadLink>
                     </div>
                 </div>
             </div>
