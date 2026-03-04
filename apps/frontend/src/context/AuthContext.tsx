@@ -2,6 +2,16 @@ import { createContext, useContext, useState, useEffect, useRef, type ReactNode 
 import { supabase } from '../services/supabase';
 import { getCredits } from '../services/api';
 import { clearCache } from '../services/storage';
+
+// Clears the local IndexedDB used for offline application tracking.
+// Called on logout and user-switch to prevent cross-user data leaks.
+function clearIndexedDB() {
+  try {
+    indexedDB.deleteDatabase('JobSearchTracker');
+  } catch {
+    // Non-fatal — browser may not support IndexedDB or it may already be absent
+  }
+}
 import { useToast } from './ToastContext';
 
 interface User {
@@ -52,7 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clear cache on user switch to prevent data leaks
       if (newUser && previousUserId.current && newUser.id !== previousUserId.current) {
         console.log('[Auth] User switched from', previousUserId.current, 'to', newUser.id);
-        clearCache(); // Clear previous user's cached data
+        clearCache();
+        clearIndexedDB();
       }
 
       if (event === 'SIGNED_IN' && newUser) {
@@ -108,9 +119,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-    // Clear cached profile data to prevent leaks
-    // This clears ALL local storage caches (Guest and User)
-    clearCache();
+    // Clear all local browser storage to prevent data leaks between users
+    clearCache();       // localStorage (profile cache)
+    clearIndexedDB();   // IndexedDB (application tracker)
     setUser(null);
     setCredits(null);
     setNextRefillAt(null);

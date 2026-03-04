@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useResume } from '../../context/ResumeContext';
+import { useAuth } from '../../context/AuthContext';
 import { ModernTemplate } from './templates/ModernTemplate';
 import { ClassicTemplate } from './templates/ClassicTemplate';
 import { Layout, Type, Briefcase, ExternalLink, Loader2, CheckCircle2, Link2, X, Download } from 'lucide-react';
@@ -14,6 +15,7 @@ import { PAGE_SIZES } from '../../utils/pdfConstants';
 
 export const PreviewPanel = () => {
     const { resume, dispatch } = useResume();
+    const { user } = useAuth();
     const { addToast } = useToast();
     const { selectedTemplate, pageSize } = resume;
     const [debouncedResume, setDebouncedResume] = useState(resume);
@@ -61,7 +63,7 @@ export const PreviewPanel = () => {
 
             await db.createApplication({
                 id: v4(),
-                userId: 'user123',
+                userId: user?.id ?? '',
                 company,
                 jobTitle: title,
                 jobDescription: resume.tailoringJob?.description || '',
