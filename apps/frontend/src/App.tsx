@@ -4,6 +4,7 @@ import { ToastProvider } from './context/ToastContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Layout } from './components/Layout';
 import { AuthPage } from './components/Auth/AuthPage';
+import { LandingPage } from './components/Landing/LandingPage';
 import { HeroRoaster } from './components/Landing/HeroRoaster';
 import { ScanResults } from './components/Landing/ScanResults';
 import { DemographicsStep } from './components/Onboarding/DemographicsStep';
@@ -11,7 +12,6 @@ import { useState, useEffect } from 'react';
 import { getOnboardingStatus, completeOnboarding } from './services/storage';
 import { Loader2 } from 'lucide-react';
 
-// Protected route wrapper
 // Protected route wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -114,29 +114,57 @@ function AppRoutes() {
 
   return (
     <Routes>
+      {/* Landing page for non-authenticated users */}
+      <Route
+        path="/"
+        element={
+          isAuthenticated ? (
+            <ProtectedRoute>
+              <ResumeProvider>
+                <AppContent />
+              </ResumeProvider>
+            </ProtectedRoute>
+          ) : (
+            <LandingPage />
+          )
+        }
+      />
+
       {/* Auth routes */}
       <Route
         path="/login"
         element={
-          isAuthenticated ? <Navigate to="/" replace /> : <AuthPage initialMode="login" />
+          isAuthenticated ? <Navigate to="/app" replace /> : <AuthPage initialMode="login" />
         }
       />
       <Route
         path="/register"
         element={
-          isAuthenticated ? <Navigate to="/" replace /> : <AuthPage initialMode="register" />
+          isAuthenticated ? <Navigate to="/app" replace /> : <AuthPage initialMode="register" />
         }
       />
 
-      {/* Protected routes */}
+      {/* Protected app routes */}
       <Route
-        path="/*"
+        path="/app/*"
         element={
           <ProtectedRoute>
             <ResumeProvider>
               <AppContent />
             </ResumeProvider>
           </ProtectedRoute>
+        }
+      />
+
+      {/* Catch-all redirect */}
+      <Route
+        path="/*"
+        element={
+          isAuthenticated ? (
+            <Navigate to="/app" replace />
+          ) : (
+            <Navigate to="/" replace />
+          )
         }
       />
     </Routes>

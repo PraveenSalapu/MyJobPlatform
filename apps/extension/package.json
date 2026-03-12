@@ -1,5 +1,5 @@
 {
-  "name": "@careerflow/extension",
+  "name": "@resumind/extension",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -8,7 +8,7 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "@careerflow/shared": "workspace:*",
+    "@resumind/shared": "workspace:*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

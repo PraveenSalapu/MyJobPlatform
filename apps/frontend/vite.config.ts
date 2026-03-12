@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => ({
   envDir: '../../',
   resolve: {
     alias: {
-      '@careerflow/shared': path.resolve(__dirname, '../../packages/shared/src'),
+      '@resumind/shared': path.resolve(__dirname, '../../packages/shared/src'),
     },
   },
   server: {

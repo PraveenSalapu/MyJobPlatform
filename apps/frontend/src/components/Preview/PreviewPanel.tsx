@@ -1,16 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useResume } from '../../context/ResumeContext';
+import { useAuth } from '../../context/AuthContext';
 import { ModernTemplate } from './templates/ModernTemplate';
 import { ClassicTemplate } from './templates/ClassicTemplate';
-import { Layout, Type, Briefcase, ExternalLink, Loader2, CheckCircle2, Link2, X } from 'lucide-react';
+import { MinimalistTemplate } from './templates/MinimalistTemplate';
+import { JakeTemplate } from './templates/JakeTemplate';
+import { Layout, Type, Minimize2, FileText, Briefcase, ExternalLink, Loader2, CheckCircle2, Link2, X, Download, AlertTriangle } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { PDFDownloadLink } from '@react-pdf/renderer';
+import { ResumePDF } from '../PDF/ResumePDF';
 import { getDatabase } from '../../services/database/mongodb';
 import { v4 } from 'uuid';
 import { fetchWithAuth } from '../../services/api';
 import { getActiveProfile } from '../../services/storage';
+import { PAGE_SIZES } from '../../utils/pdfConstants';
 
 export const PreviewPanel = () => {
     const { resume, dispatch } = useResume();
+    const { user } = useAuth();
     const { addToast } = useToast();
     const { selectedTemplate, pageSize } = resume;
     const [debouncedResume, setDebouncedResume] = useState(resume);
@@ -19,6 +26,8 @@ export const PreviewPanel = () => {
     const [isApplyingToJob, setIsApplyingToJob] = useState(false);
     const [manualJobUrl, setManualJobUrl] = useState('');
     const [showUrlInput, setShowUrlInput] = useState(false);
+    const [overflowsPage, setOverflowsPage] = useState(false);
+    const contentRef = useRef<HTMLDivElement>(null);
 
     // Extract job URL from tailoring job or try to find it in description
     const getJobUrl = (): string => {
@@ -58,7 +67,7 @@ export const PreviewPanel = () => {
 
             await db.createApplication({
                 id: v4(),
-                userId: 'user123',
+                userId: user?.id ?? '',
                 company,
                 jobTitle: title,
                 jobDescription: resume.tailoringJob?.description || '',
@@ -136,9 +145,27 @@ export const PreviewPanel = () => {
         };
     }, [resume]);
 
+    // Use shared page size constants for consistent rendering (declared early for overflow detection)
+    const pageDims = PAGE_SIZES[pageSize === 'LETTER' ? 'LETTER' : 'A4'];
+
+    // Detect when content overflows past the first page boundary
+    useEffect(() => {
+        const el = contentRef.current;
+        if (!el) return;
+        // 1px = 96/25.4 mm at standard screen DPI; page height is in mm
+        const pageHeightPx = pageDims.height * (96 / 25.4);
+        const check = () => setOverflowsPage(el.offsetHeight > pageHeightPx + 4);
+        const observer = new ResizeObserver(check);
+        observer.observe(el);
+        check();
+        return () => observer.disconnect();
+    }, [pageDims.height, debouncedResume]);
+
     const templates = [
         { id: 'modern', name: 'Modern', icon: Layout },
         { id: 'classic', name: 'Classic', icon: Type },
+        { id: 'minimalist', name: 'Minimal', icon: Minimize2 },
+        { id: 'jake', name: "Jake's", icon: FileText },
     ] as const;
 
     const renderTemplate = () => {
@@ -146,17 +173,17 @@ export const PreviewPanel = () => {
             case 'classic':
                 return <ClassicTemplate resume={debouncedResume} />;
             case 'minimalist':
-                // Minimalist is currently broken, fallback to Modern for now or implement if fixed
-                return <ModernTemplate resume={debouncedResume} />;
+                return <MinimalistTemplate resume={debouncedResume} />;
+            case 'jake':
+                return <JakeTemplate resume={debouncedResume} />;
             case 'modern':
             default:
                 return <ModernTemplate resume={debouncedResume} />;
         }
     };
 
-    // Calculate width based on page size
-    const pageWidth = pageSize === 'LETTER' ? '216mm' : '210mm';
-    const pageHeight = pageSize === 'LETTER' ? '279mm' : '297mm';
+    const pageWidth = `${pageDims.width}mm`;
+    const pageHeight = `${pageDims.height}mm`;
 
     return (
         <div className="h-full flex flex-col bg-[#1e1e1e] border-l border-gray-800">
@@ -175,8 +202,8 @@ export const PreviewPanel = () => {
                                         key={t.id}
                                         onClick={() => dispatch({ type: 'SET_TEMPLATE', payload: t.id })}
                                         className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${isActive
-                                                ? 'bg-indigo-600 text-white shadow-sm'
-                                                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                                            ? 'bg-indigo-600 text-white shadow-sm'
+                                            : 'text-gray-400 hover:text-white hover:bg-gray-800'
                                             }`}
                                     >
                                         <Icon size={14} />
@@ -186,14 +213,44 @@ export const PreviewPanel = () => {
                             })}
                         </div>
                     </div>
+
+                    {/* Download PDF Button */}
+                    <div className="flex items-center ml-auto md:ml-4">
+                        <PDFDownloadLink
+                            document={<ResumePDF resume={debouncedResume} />}
+                            fileName={`${resume.personalInfo?.fullName?.replace(/\s+/g, '_') || 'My'}_Resume.pdf`}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors shadow-[0_0_15px_rgba(79,70,229,0.3)]"
+                        >
+                            {({ loading }) => (
+                                loading ? (
+                                    <>
+                                        <Loader2 size={16} className="animate-spin" /> Preparing PDF...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Download size={16} /> Download
+                                    </>
+                                )
+                            )}
+                        </PDFDownloadLink>
+                    </div>
                 </div>
             </div>
+
+            {/* Overflow warning */}
+            {overflowsPage && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-amber-900/80 border-b border-amber-600/50 text-amber-200 text-xs font-medium">
+                    <AlertTriangle size={13} className="shrink-0 text-amber-400" />
+                    Resume exceeds 1 page. Reduce font size in Layout Settings or trim content.
+                </div>
+            )}
 
             {/* Preview Area */}
             <div className="flex-1 overflow-y-auto p-8 custom-scrollbar flex justify-center bg-[#1e1e1e]">
                 <div className="relative">
-                    {/* Page 1 */}
+                    {/* Page */}
                     <div
+                        ref={contentRef}
                         className="bg-white origin-top transform scale-90 sm:scale-100 transition-transform duration-300 shadow-2xl"
                         style={{
                             width: pageWidth,
@@ -203,16 +260,18 @@ export const PreviewPanel = () => {
                         {renderTemplate()}
                     </div>
 
-                    {/* Page Break Indicator */}
-                    <div className="absolute left-0 right-0 transform scale-90 sm:scale-100 pointer-events-none" style={{ top: pageHeight }}>
-                        <div className="flex items-center justify-center">
-                            <div className="flex-1 border-t-2 border-dashed border-red-500/50"></div>
-                            <span className="px-4 py-1.5 bg-red-900/80 backdrop-blur-sm text-red-200 text-xs font-bold rounded-full shadow-lg border border-red-500/50">
-                                ⚠ PAGE 2 STARTS HERE
-                            </span>
-                            <div className="flex-1 border-t-2 border-dashed border-red-500/50"></div>
+                    {/* Page Break Indicator — only shown when content overflows */}
+                    {overflowsPage && (
+                        <div className="absolute left-0 right-0 transform scale-90 sm:scale-100 pointer-events-none" style={{ top: pageHeight }}>
+                            <div className="flex items-center justify-center">
+                                <div className="flex-1 border-t-2 border-dashed border-red-500/60"></div>
+                                <span className="px-4 py-1.5 bg-red-900/80 backdrop-blur-sm text-red-200 text-xs font-bold rounded-full shadow-lg border border-red-500/50">
+                                    PAGE 2 STARTS HERE
+                                </span>
+                                <div className="flex-1 border-t-2 border-dashed border-red-500/60"></div>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
 

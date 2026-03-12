@@ -1,19 +1,11 @@
 import { Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { Resume } from '../../../types';
 import { renderPDFSection } from '../SectionRenderer';
+import { MM_TO_PT, TEMPLATE_DEFAULTS } from '../../../utils/pdfConstants';
 
 export const MinimalistPDF = ({ resume }: { resume: Resume }) => {
-    console.log('MinimalistPDF rendering with layout:', resume.layout);
-    // Default values if layout is missing or legacy
-    const defaultLayout = {
-        fontSize: 10,
-        lineHeight: 1.4,
-        sectionSpacing: 5,
-        nameSize: 20,
-        contactSize: 9,
-        margin: { top: 15, right: 15, bottom: 15, left: 15 },
-        fontFamily: 'Helvetica'
-    };
+    // Default values from shared constants
+    const defaultLayout = TEMPLATE_DEFAULTS.minimalist;
 
     const layout = resume.layout && typeof resume.layout.fontSize === 'number'
         ? { ...defaultLayout, ...resume.layout }
@@ -24,16 +16,15 @@ export const MinimalistPDF = ({ resume }: { resume: Resume }) => {
         .filter(s => s.isVisible)
         .sort((a, b) => a.order - b.order);
 
-    // Convert mm to pt for margins (1mm = 2.835pt)
-    const mmToPt = 2.835;
-    const marginTop = (layout.margin?.top || 15) * mmToPt;
-    const marginRight = (layout.margin?.right || 15) * mmToPt;
-    const marginBottom = (layout.margin?.bottom || 15) * mmToPt;
-    const marginLeft = (layout.margin?.left || 15) * mmToPt;
+    // Convert mm to pt for margins using precise conversion
+    const marginTop = (layout.margin?.top || 15) * MM_TO_PT;
+    const marginRight = (layout.margin?.right || 15) * MM_TO_PT;
+    const marginBottom = (layout.margin?.bottom || 15) * MM_TO_PT;
+    const marginLeft = (layout.margin?.left || 15) * MM_TO_PT;
 
     const baseFontSize = layout.fontSize;
     const lineHeight = layout.lineHeight;
-    const sectionGap = (layout.sectionSpacing || 5) * mmToPt;
+    const sectionGap = (layout.sectionSpacing || 5) * MM_TO_PT;
     const nameSize = layout.nameSize;
     const contactSize = layout.contactSize;
 

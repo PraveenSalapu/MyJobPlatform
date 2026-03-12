@@ -1,5 +1,5 @@
 {
-  "name": "@careerflow/backend",
+  "name": "@resumind/backend",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -9,8 +9,8 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "@careerflow/shared": "workspace:*",
     "@google/genai": "^1.30.0",
+    "@resumind/shared": "workspace:*",
     "@supabase/supabase-js": "^2.86.2",
     "@types/pdfkit": "^0.17.4",
     "bcryptjs": "^3.0.2",
@@ -19,8 +19,10 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "pdfkit": "^0.17.2",
+    "rss-parser": "^3.13.0",
     "uuid": "^13.0.0",
     "zod": "^3.24.2"
   },

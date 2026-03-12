@@ -1,73 +1,171 @@
-# React + TypeScript + Vite
+# 🎯 MyJobPlatform - AI-Powered Job Application Management System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+[![React](https://img.shields.io/badge/React-18.3.1-61DAFB?logo=react)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-6.0.5-646CFF?logo=vite)](https://vite.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.6.2-3178C6?logo=typescript)](https://www.typescriptlang.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Currently, two official plugins are available:
+> An intelligent job application tracking system with AI-powered PDF resume rendering, webhook automation, and comprehensive application management.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 📋 Overview
 
-## React Compiler
+MyJobPlatform is a full-stack web application designed to streamline the job search process for software engineers and professionals. It provides automated application tracking, intelligent PDF resume generation with consistent rendering, and real-time webhook integrations for seamless workflow automation.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Key Features
 
-## Expanding the ESLint configuration
+🤖 **AI-Powered Resume Generation**
+- Dynamic PDF rendering with consistent cross-platform output
+- Template-based resume customization
+- Real-time preview and editing
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+📊 **Application Tracking Dashboard**
+- Visual pipeline management (Applied → Interview → Offer)
+- Status tracking and analytics
+- Company and position metadata management
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+🔗 **Webhook Automation**
+- Real-time application status updates
+- Integration with external job boards
+- Automated notification system
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+🎨 **Modern UI/UX**
+- Responsive design with React 18
+- Fast development with Vite HMR
+- TypeScript for type safety
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 🚀 Live Demo
+
+**Coming Soon** - Deployment in progress
+
+## 🛠️ Tech Stack
+
+### Frontend
+- **React 18.3.1** - UI component library
+- **TypeScript 5.6.2** - Type-safe JavaScript
+- **Vite 6.0.5** - Next-generation frontend tooling
+- **ESLint** - Code quality and consistency
+
+### Backend (Planned)
+- Node.js / Express
+- PostgreSQL / MongoDB
+- JWT Authentication
+
+### PDF Generation
+- Custom rendering engine
+- Cross-platform consistency fixes
+- Template-based generation
+
+## 📦 Installation
+
+### Prerequisites
+- Node.js (v18+ recommended)
+- npm or yarn
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/PraveenSalapu/MyJobPlatform.git
+cd MyJobPlatform
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 🎯 Usage
+
+### Development Server
+```bash
+npm run dev
+# Opens at http://localhost:5173
+```
+
+### Linting
+```bash
+npm run lint
+```
+
+### Production Build
+```bash
+npm run build
+npm run preview
+```
+
+## 📁 Project Structure
+
+```
+MyJobPlatform/
+├── src/
+│   ├── components/     # React components
+│   ├── pages/          # Page components
+│   ├── hooks/          # Custom React hooks
+│   ├── utils/          # Utility functions
+│   ├── types/          # TypeScript type definitions
+│   └── App.tsx         # Main application component
+├── public/             # Static assets
+├── vite.config.ts      # Vite configuration
+├── tsconfig.json       # TypeScript configuration
+├── eslint.config.js    # ESLint configuration
+└── package.json        # Dependencies and scripts
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+Create a `.env` file in the root directory:
+
+```env
+VITE_API_URL=your_api_url
+VITE_WEBHOOK_SECRET=your_webhook_secret
+```
+
+### ESLint Setup
+The project uses type-aware lint rules. For production:
 
 ```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+export default tseslint.config({
+  extends: [js.configs.recommended, ...tseslint.configs.recommendedTypeChecked],
+  rules: {
+    '@typescript-eslint/no-unused-vars': 'error'
+  }
+})
 ```
+
+## 🤝 Contributing
+
+Contributions welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 👤 Author
+
+**Praveen Salapu**
+- GitHub: [@PraveenSalapu](https://github.com/PraveenSalapu)
+- LinkedIn: [Connect with me](https://linkedin.com/in/saisalapu)
+
+## 🙏 Acknowledgments
+
+- OpenAI for GPT-4 API
+- Supabase for backend infrastructure
+- React and Vite communities
+
+---
+
+**Built with ❤️ for job seekers navigating the competitive tech market**

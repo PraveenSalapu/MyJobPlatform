@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
-import { Bot, BarChart3, Briefcase, FileText, CheckSquare, LayoutDashboard, Settings, User, AlertTriangle, X } from 'lucide-react';
+import { Bot, BarChart3, Briefcase, FileText, CheckSquare, LayoutDashboard, Settings, User, AlertTriangle, X, Menu, ChevronLeft } from 'lucide-react';
 import { EditorPanel } from './Editor/EditorPanel';
 import { PreviewPanel } from './Preview/PreviewPanel';
 import { AgentWorkspace } from './Agent/AgentWorkspace';
@@ -70,8 +70,32 @@ const TOUR_COMPLETED_KEY = 'careerflow_tour_completed';
 export const Layout = () => {
     const [viewMode, setViewMode] = useState<ViewMode>('profile'); // Default to Profile/Home
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [isMobilePreviewMode, setIsMobilePreviewMode] = useState(false); // For mobile editor toggle
     const { resume, dispatch } = useResume();
-    const { credits, isAuthenticated } = useAuth();
+    const { credits, nextRefillAt, isAuthenticated } = useAuth();
+
+    // Format refill date for display
+    const formatRefillDate = (isoDate: string | null): string => {
+        if (!isoDate) return 'in 5 days';
+        const refillDate = new Date(isoDate);
+        const now = new Date();
+        const diffMs = refillDate.getTime() - now.getTime();
+
+        if (diffMs <= 0) return 'soon';
+
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+        if (diffDays > 0) {
+            return `in ${diffDays}d ${diffHours}h`;
+        } else if (diffHours > 0) {
+            return `in ${diffHours}h`;
+        } else {
+            const diffMins = Math.floor(diffMs / (1000 * 60));
+            return `in ${diffMins}m`;
+        }
+    };
     const [searchParams, setSearchParams] = useSearchParams();
 
     // Navigation warning state for tailoring mode
@@ -87,6 +111,7 @@ export const Layout = () => {
             return;
         }
         setViewMode(targetMode);
+        setIsMobileMenuOpen(false); // Close mobile menu on navigation
     }, [resume.isTailoring, viewMode]);
 
     // Confirm leaving tailoring mode
@@ -190,24 +215,54 @@ export const Layout = () => {
                 return <ProfilePage />;
             case 'agents':
                 return (
-                    <div className="flex h-full w-full">
-                        <div className="w-1/2 h-full border-r border-gray-800">
+                    <div className="flex flex-col lg:flex-row h-full w-full">
+                        {/* Mobile toggle for agents view */}
+                        <div className="lg:hidden flex border-b border-gray-800 bg-[#111]">
+                            <button
+                                onClick={() => setIsMobilePreviewMode(false)}
+                                className={`flex-1 py-3 text-sm font-medium transition-colors ${!isMobilePreviewMode ? 'text-white bg-indigo-600' : 'text-gray-400'}`}
+                            >
+                                Editor
+                            </button>
+                            <button
+                                onClick={() => setIsMobilePreviewMode(true)}
+                                className={`flex-1 py-3 text-sm font-medium transition-colors ${isMobilePreviewMode ? 'text-white bg-indigo-600' : 'text-gray-400'}`}
+                            >
+                                AI Agent
+                            </button>
+                        </div>
+                        <div className={`${isMobilePreviewMode ? 'hidden' : 'flex-1'} lg:flex lg:w-1/2 h-full border-r border-gray-800`}>
                             <EditorPanel />
                         </div>
-                        <div className="w-1/2 h-full">
+                        <div className={`${!isMobilePreviewMode ? 'hidden' : 'flex-1'} lg:flex lg:w-1/2 h-full`}>
                             <AgentWorkspace resumeContext={resume} />
                         </div>
                     </div>
                 );
             default: // editor
                 return (
-                    <div className="flex h-full w-full">
-                        {/* EDITOR PANEL (45%) */}
-                        <div className="w-[45%] h-full border-r border-gray-800 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700">
+                    <div className="flex flex-col lg:flex-row h-full w-full">
+                        {/* Mobile toggle for editor/preview */}
+                        <div className="lg:hidden flex border-b border-gray-800 bg-[#111]">
+                            <button
+                                onClick={() => setIsMobilePreviewMode(false)}
+                                className={`flex-1 py-3 text-sm font-medium transition-colors ${!isMobilePreviewMode ? 'text-white bg-indigo-600' : 'text-gray-400'}`}
+                            >
+                                Edit
+                            </button>
+                            <button
+                                onClick={() => setIsMobilePreviewMode(true)}
+                                className={`flex-1 py-3 text-sm font-medium transition-colors ${isMobilePreviewMode ? 'text-white bg-indigo-600' : 'text-gray-400'}`}
+                            >
+                                Preview
+                            </button>
+                        </div>
+                        {/* EDITOR PANEL - Full on mobile when active, 45% on desktop */}
+                        <div className={`${isMobilePreviewMode ? 'hidden' : 'flex-1'} lg:flex lg:w-[45%] h-full border-r border-gray-800 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700`}>
                             <EditorPanel />
                         </div>
-                        {/* PREVIEW PANEL (55%) */}
-                        <div className="w-[55%] h-full bg-[#1e1e1e] flex justify-center items-start p-8 overflow-y-auto">
+                        {/* PREVIEW PANEL - Full on mobile when active, 55% on desktop */}
+                        <div className={`${!isMobilePreviewMode ? 'hidden' : 'flex-1'} lg:flex lg:w-[55%] h-full bg-[#1e1e1e] flex justify-center items-start p-4 lg:p-8 overflow-y-auto`}>
                             <PreviewPanel />
                         </div>
                     </div>
@@ -238,12 +293,39 @@ export const Layout = () => {
 
     return (
         <div className={`flex h-screen w-full ${isDarkMode ? 'bg-[#0F0F0F] text-gray-200' : 'bg-gray-50 text-gray-900'} overflow-hidden font-sans`}>
-            {/* TECHNICAL SIDEBAR */}
-            <div data-tour="sidebar" className="w-20 flex-shrink-0 border-r border-gray-800 bg-[#111] flex flex-col items-center py-6 gap-6 z-50">
+            {/* MOBILE OVERLAY */}
+            {isMobileMenuOpen && (
+                <div
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                />
+            )}
+
+            {/* TECHNICAL SIDEBAR - Hidden on mobile, shown on lg+ */}
+            <div
+                data-tour="sidebar"
+                className={`
+                    fixed lg:relative inset-y-0 left-0 z-50
+                    w-64 lg:w-20 flex-shrink-0
+                    border-r border-gray-800 bg-[#111]
+                    flex flex-col items-center py-6 gap-6
+                    transform transition-transform duration-300 ease-in-out
+                    ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+                `}
+            >
+                {/* Close button for mobile */}
+                <button
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="lg:hidden absolute top-4 right-4 p-2 text-gray-400 hover:text-white"
+                >
+                    <X size={20} />
+                </button>
+
                 <div className="mb-4">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white">
                         KC
                     </div>
+                    <span className="lg:hidden text-xs text-gray-400 mt-2 block text-center">CareerFlow</span>
                 </div>
 
                 <div className="flex flex-col gap-2 w-full px-2">
@@ -278,26 +360,48 @@ export const Layout = () => {
 
             {/* MAIN CONTENT AREA */}
             <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-                {/* Top Bar (Optional, breadcrumbs or context) */}
-                <header className="h-14 border-b border-gray-800 bg-[#111]/50 backdrop-blur-sm flex items-center px-6 justify-between">
-                    <div className="flex items-center gap-2 text-sm text-gray-400">
-                        <LayoutDashboard size={14} />
-                        <span>/</span>
-                        <span className="text-white font-medium capitalize">{viewMode}</span>
+                {/* Top Bar */}
+                <header className="h-14 border-b border-gray-800 bg-[#111]/50 backdrop-blur-sm flex items-center px-4 lg:px-6 justify-between">
+                    {/* Mobile menu button + breadcrumb */}
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setIsMobileMenuOpen(true)}
+                            className="lg:hidden p-2 -ml-2 text-gray-400 hover:text-white"
+                        >
+                            <Menu size={20} />
+                        </button>
+                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                            <LayoutDashboard size={14} className="hidden sm:block" />
+                            <span className="hidden sm:block">/</span>
+                            <span className="text-white font-medium capitalize">{viewMode}</span>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 sm:gap-4">
                         {/* Credit Badge */}
                         {credits !== null && (
-                            <div className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-colors ${credits < 30 ? 'bg-red-500/10 border-red-500/20 text-red-400 animate-pulse' :
-                                'bg-yellow-500/10 border-yellow-500/20 text-yellow-500'
-                                }`}>
-                                <span className="text-sm font-bold">⚡ {credits}</span>
+                            <div
+                                className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 rounded-full border transition-colors cursor-help ${
+                                    credits === 0 ? 'bg-red-500/20 border-red-500/30 text-red-400' :
+                                    credits < 30 ? 'bg-red-500/10 border-red-500/20 text-red-400 animate-pulse' :
+                                    'bg-yellow-500/10 border-yellow-500/20 text-yellow-500'
+                                }`}
+                                title={credits === 0
+                                    ? `Out of credits! Refills ${formatRefillDate(nextRefillAt)}`
+                                    : credits < 30
+                                    ? `Low credits! Need 30 for AI features. Refills ${formatRefillDate(nextRefillAt)}`
+                                    : `${credits} credits remaining. Refills ${formatRefillDate(nextRefillAt)}`}
+                            >
+                                <span className="text-xs sm:text-sm font-bold">
+                                    {credits === 0 ? '⚡ Empty' : `⚡ ${credits}`}
+                                </span>
                             </div>
                         )}
-                        <div className="flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
+                        <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
                             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                             <span className="text-xs text-green-400 font-mono">SYSTEM ONLINE</span>
                         </div>
+                        {/* Mobile-only status indicator */}
+                        <div className="sm:hidden w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                     </div>
                 </header>
 

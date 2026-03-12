@@ -4,6 +4,16 @@ import { getCredits } from '../services/api';
 import { clearCache } from '../services/storage';
 import { useToast } from './ToastContext';
 
+// Clears the local IndexedDB used for offline application tracking.
+// Called on logout and user-switch to prevent cross-user data leaks.
+function clearIndexedDB() {
+  try {
+    indexedDB.deleteDatabase('JobSearchTracker');
+  } catch {
+    // Non-fatal — browser may not support IndexedDB or it may already be absent
+  }
+}
+
 interface User {
   id: string;
   email?: string;
@@ -17,6 +27,7 @@ interface AuthContextType {
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   credits: number | null;
+  nextRefillAt: string | null; // ISO date string for next credit refill
   refreshCredits: () => Promise<void>;
 }
 
@@ -25,6 +36,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
+  const [nextRefillAt, setNextRefillAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { addToast } = useToast();
   const previousUserId = useRef<string | null>(null);
@@ -50,7 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clear cache on user switch to prevent data leaks
       if (newUser && previousUserId.current && newUser.id !== previousUserId.current) {
         console.log('[Auth] User switched from', previousUserId.current, 'to', newUser.id);
-        clearCache(); // Clear previous user's cached data
+        clearCache();
+        clearIndexedDB();
       }
 
       if (event === 'SIGNED_IN' && newUser) {
@@ -72,20 +85,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshCredits = async () => {
     if (user) {
       try {
-        const balance = await getCredits();
+        const { credits: balance, nextRefillAt: refillDate } = await getCredits();
         setCredits(balance);
+        setNextRefillAt(refillDate);
       } catch (e) {
         console.error('Failed to refresh credits:', e);
-        // Only show toast if it's a persistent error to avoid spam, 
-        // but for debugging this installation issue, it's helpful.
-        addToast('error', 'Could not load credits. Did you run the SQL migration?');
+        const msg = e instanceof Error ? e.message : String(e);
+        const isNetworkError = msg.includes('fetch') || msg.includes('network') || msg.includes('ECONNREFUSED');
+        const hint = isNetworkError
+          ? 'Backend unreachable. Is it running on port 3001?'
+          : 'Could not load credits. Check backend logs.';
+        addToast('error', hint);
       }
     }
   };
 
   useEffect(() => {
-    if (user) refreshCredits();
-    else setCredits(null);
+    if (user) {
+      refreshCredits();
+    } else {
+      setCredits(null);
+      setNextRefillAt(null);
+    }
   }, [user]);
 
   const login = async (email: string, password: string) => {
@@ -101,11 +122,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-    // Clear cached profile data to prevent leaks
-    // This clears ALL local storage caches (Guest and User)
-    clearCache();
+    // Clear all local browser storage to prevent data leaks between users
+    clearCache();       // localStorage (profile cache)
+    clearIndexedDB();   // IndexedDB (application tracker)
     setUser(null);
     setCredits(null);
+    setNextRefillAt(null);
   };
 
   return (
@@ -118,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         credits,
+        nextRefillAt,
         refreshCredits,
       }}
     >

@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useResume } from '../../context/ResumeContext';
-import { WifiOff, RefreshCw, ArrowUpDown, ArrowDown, ArrowUp, Filter, Search } from 'lucide-react';
+import { WifiOff, RefreshCw, ArrowDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { fetchJobsFromDB } from '../../services/database/supabase';
-import { refreshMatchScores } from '../../services/api';
+import type { FetchJobsResult } from '../../services/database/supabase';
+import { refreshMatchScores, createPendingAutofill } from '../../services/api';
+import type { PaginationInfo } from '../../services/api';
 import type { Job } from '../../types';
 import { JobCard } from './JobCard';
 
@@ -54,6 +56,8 @@ const MOCK_JOBS: Job[] = [
 type SortField = 'match_score' | 'created_at' | 'company';
 type SortOrder = 'asc' | 'desc';
 
+const ITEMS_PER_PAGE = 20;
+
 export const JobTable: React.FC = () => {
     const [jobs, setJobs] = useState<Job[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
@@ -61,6 +65,10 @@ export const JobTable: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
 
     const [usingMockData, setUsingMockData] = useState<boolean>(false);
+
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState<number>(1);
+    const [pagination, setPagination] = useState<PaginationInfo | null>(null);
 
     // Sorting & Filtering State
     const [sortField, setSortField] = useState<SortField>('match_score');
@@ -140,20 +148,18 @@ export const JobTable: React.FC = () => {
         try {
             // Stage for Extension (Mirroring PreviewPanel logic + LocalStorage Fallback)
             const payload = {
+                profileId: resumeToUse.id, // Mandatory for BE schema
                 jobUrl: job.link,
                 jobTitle: job.title,
                 company: job.company,
-                tailoredResume: isTailoringThisJob ? resume : null, // If null, backend/extension uses profile
+                jobDescription: job.summary || '',
+                tailoredResume: isTailoringThisJob ? resume : resumeToUse, // Send actual profile data
                 timestamp: Date.now()
             };
 
             // A. Try API (Persistent Staging)
             try {
-                await fetch('/api/autofill/pending', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+                await createPendingAutofill(payload);
             } catch (e) {
                 console.warn("API Autofill stage failed, falling back to local storage", e);
             }
@@ -177,21 +183,24 @@ export const JobTable: React.FC = () => {
     };
 
     // 5. UPDATE: Fetch from Supabase (BackendDB) instead of direct API
-    const handleFetchJobs = async () => {
+    const handleFetchJobs = async (page: number = currentPage) => {
         try {
             setLoading(true);
             setError(null);
             setUsingMockData(false);
 
             // Fetch from Central Database (populated by scripts/fetch-jobs.ts)
-            const dbJobs = await fetchJobsFromDB();
+            const result = await fetchJobsFromDB(page, ITEMS_PER_PAGE);
 
-            if (dbJobs.length === 0) {
+            if (result.jobs.length === 0 && page === 1) {
                 // Fallback if DB is empty? (Optional: Trigger crawling via an API endpoint if you had one)
                 console.warn("Supabase returned no jobs. The crawler script might not have run yet.");
             }
 
-            setJobs(dbJobs);
+            setJobs(result.jobs);
+            if (result.pagination) {
+                setPagination(result.pagination);
+            }
 
         } catch (err: any) {
             console.error("Supabase Fetch failed:", err);
@@ -199,9 +208,18 @@ export const JobTable: React.FC = () => {
             setError(`Database connection failed: ${err.message}`);
             setUsingMockData(true);
             setJobs(MOCK_JOBS);
+            setPagination(null);
         } finally {
             setLoading(false);
         }
+    };
+
+    // Handle page change
+    const handlePageChange = (newPage: number) => {
+        setCurrentPage(newPage);
+        handleFetchJobs(newPage);
+        // Scroll to top of job list
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     // Refresh match scores for current profile
@@ -231,79 +249,82 @@ export const JobTable: React.FC = () => {
     return (
         <div className="h-full flex flex-col bg-[#0F0F0F] font-sans">
             {/* Header / Toolbar */}
-            <div className="p-6 border-b border-gray-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="p-4 sm:p-6 border-b border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2 flex-wrap">
                         Job Board
-                        <span className="text-sm font-normal text-gray-500 bg-gray-900 border border-gray-800 px-2 py-0.5 rounded-full">
-                            {jobs.length} found
+                        <span className="text-xs sm:text-sm font-normal text-gray-500 bg-gray-900 border border-gray-800 px-2 py-0.5 rounded-full">
+                            {pagination ? pagination.total : jobs.length} found
                         </span>
                     </h1>
-                    <p className="text-gray-400 text-sm mt-1">AI-curated opportunities matching your profile.</p>
+                    <p className="text-gray-400 text-xs sm:text-sm mt-1">AI-curated opportunities matching your profile.</p>
                 </div>
 
                 <div className="flex items-center gap-3">
                     <button
                         onClick={handleRefreshScores}
                         disabled={refreshingScores}
-                        className="flex items-center gap-2 px-4 py-2 bg-gray-900 border border-gray-700 hover:border-indigo-500 text-gray-300 rounded-lg transition-all"
+                        className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-gray-900 border border-gray-700 hover:border-indigo-500 text-gray-300 rounded-lg transition-all w-full sm:w-auto text-sm"
                     >
                         <RefreshCw size={16} className={`${refreshingScores ? 'animate-spin' : ''}`} />
-                        {refreshingScores ? 'Calculating Matches...' : 'Refresh Matches'}
+                        <span className="hidden sm:inline">{refreshingScores ? 'Calculating Matches...' : 'Refresh Matches'}</span>
+                        <span className="sm:hidden">{refreshingScores ? 'Refreshing...' : 'Refresh'}</span>
                     </button>
                 </div>
             </div>
 
-            {/* Filters Row */}
-            <div className="px-6 py-4 border-b border-gray-800/50 bg-[#121215] flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2 text-gray-500 text-sm mr-2">
-                    <Filter size={16} /> Filters:
-                </div>
+            {/* Filters Row - Scrollable on mobile */}
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-800/50 bg-[#121215] overflow-x-auto scrollbar-none">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-max">
+                    <div className="flex items-center gap-2 text-gray-500 text-xs sm:text-sm mr-1 sm:mr-2">
+                        <Filter size={14} /> <span className="hidden sm:inline">Filters:</span>
+                    </div>
 
-                <select
-                    value={filterExp}
-                    onChange={e => setFilterExp(e.target.value)}
-                    className="bg-[#1a1a1e] text-gray-300 text-sm px-3 py-1.5 rounded-md border border-gray-700 outline-none focus:border-indigo-500"
-                >
-                    <option value="">All Experience</option>
-                    {uniqueExpLevels.map(l => <option key={l} value={l}>{l}</option>)}
-                </select>
-
-                <select
-                    value={filterType}
-                    onChange={e => setFilterType(e.target.value)}
-                    className="bg-[#1a1a1e] text-gray-300 text-sm px-3 py-1.5 rounded-md border border-gray-700 outline-none focus:border-indigo-500"
-                >
-                    <option value="">All Job Types</option>
-                    {uniqueJobTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-
-                <select
-                    value={filterCategory}
-                    onChange={e => setFilterCategory(e.target.value)}
-                    className="bg-[#1a1a1e] text-gray-300 text-sm px-3 py-1.5 rounded-md border border-gray-700 outline-none focus:border-indigo-500"
-                >
-                    <option value="">All Categories</option>
-                    {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-
-                <div className="flex-1"></div>
-
-                {/* Sorting */}
-                <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500 uppercase tracking-widest font-bold">Sort By</span>
-                    <button
-                        onClick={() => toggleSort('match_score')}
-                        className={`px-3 py-1.5 rounded text-sm flex items-center gap-1 transition-colors ${sortField === 'match_score' ? 'bg-indigo-900/40 text-indigo-400 border border-indigo-500/30' : 'text-gray-400 hover:text-white'}`}
+                    <select
+                        value={filterExp}
+                        onChange={e => setFilterExp(e.target.value)}
+                        className="bg-[#1a1a1e] text-gray-300 text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-md border border-gray-700 outline-none focus:border-indigo-500"
                     >
-                        Match {sortField === 'match_score' && <ArrowDown size={12} />}
-                    </button>
-                    <button
-                        onClick={() => toggleSort('created_at')}
-                        className={`px-3 py-1.5 rounded text-sm flex items-center gap-1 transition-colors ${sortField === 'created_at' ? 'bg-indigo-900/40 text-indigo-400 border border-indigo-500/30' : 'text-gray-400 hover:text-white'}`}
+                        <option value="">All Exp</option>
+                        {uniqueExpLevels.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+
+                    <select
+                        value={filterType}
+                        onChange={e => setFilterType(e.target.value)}
+                        className="bg-[#1a1a1e] text-gray-300 text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-md border border-gray-700 outline-none focus:border-indigo-500"
                     >
-                        Newest {sortField === 'created_at' && <ArrowDown size={12} />}
-                    </button>
+                        <option value="">All Types</option>
+                        {uniqueJobTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+
+                    <select
+                        value={filterCategory}
+                        onChange={e => setFilterCategory(e.target.value)}
+                        className="bg-[#1a1a1e] text-gray-300 text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-md border border-gray-700 outline-none focus:border-indigo-500"
+                    >
+                        <option value="">All Categories</option>
+                        {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+
+                    <div className="w-4 sm:flex-1"></div>
+
+                    {/* Sorting */}
+                    <div className="flex items-center gap-1 sm:gap-2">
+                        <span className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-widest font-bold hidden sm:block">Sort</span>
+                        <button
+                            onClick={() => toggleSort('match_score')}
+                            className={`px-2 sm:px-3 py-1.5 rounded text-xs sm:text-sm flex items-center gap-1 transition-colors ${sortField === 'match_score' ? 'bg-indigo-900/40 text-indigo-400 border border-indigo-500/30' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            Match {sortField === 'match_score' && <ArrowDown size={12} />}
+                        </button>
+                        <button
+                            onClick={() => toggleSort('created_at')}
+                            className={`px-2 sm:px-3 py-1.5 rounded text-xs sm:text-sm flex items-center gap-1 transition-colors ${sortField === 'created_at' ? 'bg-indigo-900/40 text-indigo-400 border border-indigo-500/30' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            New {sortField === 'created_at' && <ArrowDown size={12} />}
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -316,24 +337,24 @@ export const JobTable: React.FC = () => {
             )}
 
             {/* Content Area - Scrollable */}
-            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar">
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center h-64 space-y-4">
-                        <RefreshCw className="animate-spin text-indigo-500" size={32} />
-                        <p className="text-gray-500">Scanning neural network for opportunities...</p>
+                    <div className="flex flex-col items-center justify-center h-48 sm:h-64 space-y-4">
+                        <RefreshCw className="animate-spin text-indigo-500" size={28} />
+                        <p className="text-gray-500 text-sm sm:text-base text-center px-4">Scanning neural network for opportunities...</p>
                     </div>
                 ) : filteredJobs.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-                        <p>No jobs found matching filters.</p>
+                    <div className="flex flex-col items-center justify-center h-48 sm:h-64 text-gray-500">
+                        <p className="text-sm sm:text-base">No jobs found matching filters.</p>
                         <button
                             onClick={() => { setFilterExp(''); setFilterType(''); setFilterCategory(''); }}
-                            className="mt-4 text-indigo-400 hover:text-indigo-300"
+                            className="mt-4 text-indigo-400 hover:text-indigo-300 text-sm"
                         >
                             Clear Filters
                         </button>
                     </div>
                 ) : (
-                    <div className="space-y-4 max-w-5xl mx-auto">
+                    <div className="space-y-3 sm:space-y-4 max-w-5xl mx-auto">
                         {sortedJobs.map((job, idx) => (
                             <JobCard
                                 key={idx}
@@ -341,6 +362,61 @@ export const JobTable: React.FC = () => {
                                 onTailor={handleTailor}
                             />
                         ))}
+
+                        {/* Pagination Controls */}
+                        {pagination && pagination.totalPages > 1 && (
+                            <div className="flex items-center justify-center gap-4 py-6 border-t border-gray-800 mt-6">
+                                <button
+                                    onClick={() => handlePageChange(currentPage - 1)}
+                                    disabled={currentPage <= 1}
+                                    className="flex items-center gap-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-300 hover:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronLeft size={16} />
+                                    <span className="hidden sm:inline">Previous</span>
+                                </button>
+
+                                <div className="flex items-center gap-2">
+                                    {/* Page numbers */}
+                                    {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                                        let pageNum: number;
+                                        if (pagination.totalPages <= 5) {
+                                            pageNum = i + 1;
+                                        } else if (currentPage <= 3) {
+                                            pageNum = i + 1;
+                                        } else if (currentPage >= pagination.totalPages - 2) {
+                                            pageNum = pagination.totalPages - 4 + i;
+                                        } else {
+                                            pageNum = currentPage - 2 + i;
+                                        }
+                                        return (
+                                            <button
+                                                key={pageNum}
+                                                onClick={() => handlePageChange(pageNum)}
+                                                className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${currentPage === pageNum
+                                                        ? 'bg-indigo-600 text-white'
+                                                        : 'bg-gray-900 border border-gray-700 text-gray-300 hover:border-indigo-500'
+                                                    }`}
+                                            >
+                                                {pageNum}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                <button
+                                    onClick={() => handlePageChange(currentPage + 1)}
+                                    disabled={!pagination.hasMore}
+                                    className="flex items-center gap-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-300 hover:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <span className="hidden sm:inline">Next</span>
+                                    <ChevronRight size={16} />
+                                </button>
+
+                                <span className="text-gray-500 text-sm ml-2">
+                                    Page {currentPage} of {pagination.totalPages}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

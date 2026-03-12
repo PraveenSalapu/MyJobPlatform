@@ -24,54 +24,54 @@ export const ProfilePage = () => {
     };
 
     return (
-        <div className="h-full w-full bg-[#0F0F0F] text-white flex flex-col items-center p-8 overflow-y-auto">
-            <div className="w-full max-w-4xl space-y-8">
+        <div className="h-full w-full bg-[#0F0F0F] text-white flex flex-col items-center p-4 sm:p-6 lg:p-8 overflow-y-auto">
+            <div className="w-full max-w-4xl space-y-6 sm:space-y-8">
 
                 {/* Header */}
-                <div className="flex items-center justify-between pb-6 border-b border-gray-800">
-                    <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-bold">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 sm:pb-6 border-b border-gray-800">
+                    <div className="flex items-center gap-3 sm:gap-4">
+                        <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xl sm:text-2xl font-bold flex-shrink-0">
                             KC
                         </div>
                         <div>
-                            <h1 className="text-3xl font-bold tracking-tight">Agent Profile</h1>
-                            <p className="text-gray-400">Manage your identity, resumes, and system preferences.</p>
+                            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Agent Profile</h1>
+                            <p className="text-gray-400 text-sm sm:text-base">Manage your identity, resumes, and system preferences.</p>
                         </div>
                     </div>
                     <button
                         onClick={logout}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-900/10 text-red-500 hover:bg-red-900/20 transition-colors border border-red-900/20"
+                        className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-red-900/10 text-red-500 hover:bg-red-900/20 transition-colors border border-red-900/20 w-full sm:w-auto"
                     >
                         <LogOut size={16} />
                         Sign Out
                     </button>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex gap-2">
+                {/* Tabs - Scrollable on mobile */}
+                <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-none">
                     <button
                         onClick={() => setActiveTab('resumes')}
-                        className={`px-6 py-3 rounded-lg font-medium transition-all flex items-center gap-2 ${activeTab === 'resumes'
+                        className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg font-medium transition-all flex items-center gap-2 whitespace-nowrap flex-shrink-0 ${activeTab === 'resumes'
                             ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
                             : 'text-gray-400 hover:bg-[#1a1a1a] hover:text-white'
                             }`}
                     >
                         <FileText size={18} />
-                        My Resumes
+                        <span className="hidden sm:inline">My</span> Resumes
                     </button>
                     <button
                         onClick={() => setActiveTab('info')}
-                        className={`px-6 py-3 rounded-lg font-medium transition-all flex items-center gap-2 ${activeTab === 'info'
+                        className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg font-medium transition-all flex items-center gap-2 whitespace-nowrap flex-shrink-0 ${activeTab === 'info'
                             ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
                             : 'text-gray-400 hover:bg-[#1a1a1a] hover:text-white'
                             }`}
                     >
                         <User size={18} />
-                        Personal Info
+                        <span className="hidden sm:inline">Personal</span> Info
                     </button>
                     <button
                         onClick={() => setActiveTab('settings')}
-                        className={`px-6 py-3 rounded-lg font-medium transition-all flex items-center gap-2 ${activeTab === 'settings'
+                        className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg font-medium transition-all flex items-center gap-2 whitespace-nowrap flex-shrink-0 ${activeTab === 'settings'
                             ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
                             : 'text-gray-400 hover:bg-[#1a1a1a] hover:text-white'
                             }`}
@@ -82,7 +82,7 @@ export const ProfilePage = () => {
                 </div>
 
                 {/* Content */}
-                <div className="bg-[#1A1A1A] border border-gray-800 rounded-xl p-8 min-h-[500px]">
+                <div className="bg-[#1A1A1A] border border-gray-800 rounded-xl p-4 sm:p-6 lg:p-8 min-h-[400px] sm:min-h-[500px]">
                     {activeTab === 'resumes' && (
                         <div className="animate-in fade-in duration-300">
                             <h2 className="text-xl font-bold mb-6">Resume Management</h2>

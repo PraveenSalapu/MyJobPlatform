@@ -5,6 +5,8 @@ import { Cpu, Upload, User, ArrowRight, PlusCircle, Loader2 } from 'lucide-react
 import { extractTextFromPDF } from '../../utils/pdfUtils';
 import { parseResumeWithAI } from '../../services/parser';
 import { getAllProfiles, setActiveProfileId, createProfile, updateActiveProfileData, type UserProfile } from '../../services/storage';
+import { analyzeResume } from '../../services/api';
+import type { AtsScan } from '../../types';
 
 interface HeroRoasterProps {
     onScanComplete?: () => void;
@@ -94,28 +96,65 @@ export const HeroRoaster: React.FC<HeroRoasterProps> = ({ onScanComplete, onProf
                 addLog("Warning: Could not save to database.");
             }
 
-            setTimeout(() => {
-                addLog("Optimization complete.");
-                setScanState('complete');
+            // Perform real analysis
+            addLog("Running comprehensive resume analysis...");
 
-                // Dispatch with the CORRECT ID (from DB or existing)
-                dispatch({ type: 'SET_RESUME', payload: finalResumeData });
+            try {
+                const analysisResult = await analyzeResume(finalResumeData, false);
+                addLog(`Analysis complete. Score: ${analysisResult.overallScore}/100`);
 
-                dispatch({
-                    type: 'SET_SCAN_RESULTS',
-                    payload: {
-                        score: 42,
-                        issues: [
-                            { type: 'error', message: 'Header unreadable (Graphics detected)' },
-                            { type: 'error', message: 'Date format inconsistent (MM/YY vs Month Year)' },
-                            { type: 'warning', message: 'Missing key skills: Docker, Kubernetes' },
-                            { type: 'success', message: 'Contact info valid' }
-                        ],
-                        missingKeywords: ['Docker', 'Kubernetes']
-                    }
-                });
-                if (onScanComplete) onScanComplete();
-            }, 3500);
+                // Convert analysis result to AtsScan format
+                const scanResults: AtsScan = {
+                    score: analysisResult.overallScore,
+                    letterGrade: analysisResult.letterGrade,
+                    summary: analysisResult.summary,
+                    scores: analysisResult.scores,
+                    sectionAnalysis: analysisResult.sectionAnalysis,
+                    issues: analysisResult.issues,
+                    topPriorities: analysisResult.topPriorities,
+                    strengths: analysisResult.strengths,
+                    keywords: analysisResult.keywords.found,
+                    missingKeywords: analysisResult.keywords.missing,
+                    industryKeywords: analysisResult.keywords.industryRelevant,
+                    metrics: analysisResult.metrics,
+                    actionVerbs: analysisResult.actionVerbs,
+                };
+
+                setTimeout(() => {
+                    addLog("Optimization complete.");
+                    setScanState('complete');
+
+                    // Dispatch with the CORRECT ID (from DB or existing)
+                    dispatch({ type: 'SET_RESUME', payload: finalResumeData });
+                    dispatch({ type: 'SET_SCAN_RESULTS', payload: scanResults });
+
+                    if (onScanComplete) onScanComplete();
+                }, 1000);
+
+            } catch (analysisError) {
+                console.error('Analysis failed:', analysisError);
+                addLog("Warning: Could not complete full analysis. Using basic scan.");
+
+                // Fallback to basic analysis if API fails
+                setTimeout(() => {
+                    addLog("Basic scan complete.");
+                    setScanState('complete');
+
+                    dispatch({ type: 'SET_RESUME', payload: finalResumeData });
+                    dispatch({
+                        type: 'SET_SCAN_RESULTS',
+                        payload: {
+                            score: 50,
+                            issues: [
+                                { type: 'info', message: 'Resume parsed successfully. Complete your profile for detailed analysis.', category: 'completeness', priority: 1 }
+                            ],
+                            missingKeywords: []
+                        }
+                    });
+
+                    if (onScanComplete) onScanComplete();
+                }, 1500);
+            }
 
         } catch (error) {
             addLog("ERROR: Parse failed. File corrupted or encrypted.");
@@ -127,7 +166,7 @@ export const HeroRoaster: React.FC<HeroRoasterProps> = ({ onScanComplete, onProf
                     type: 'SET_SCAN_RESULTS',
                     payload: {
                         score: 0,
-                        issues: [{ type: 'error', message: 'Parsing failed. Please enter data manually.' }],
+                        issues: [{ type: 'error', category: 'structure', priority: 1, message: 'Parsing failed. Please enter data manually.' }],
                         missingKeywords: []
                     }
                 });
@@ -172,52 +211,52 @@ export const HeroRoaster: React.FC<HeroRoasterProps> = ({ onScanComplete, onProf
     }, []);
 
     const renderWelcomeBack = () => (
-        <div className="z-10 w-full max-w-4xl flex flex-col items-center animate-in fade-in duration-500">
-            <div className="text-center mb-10">
+        <div className="z-10 w-full max-w-4xl flex flex-col items-center animate-in fade-in duration-500 px-4 sm:px-6">
+            <div className="text-center mb-6 sm:mb-10">
                 <div className="inline-block px-3 py-1 mb-4 border border-indigo-500/30 bg-indigo-900/10 rounded-full">
                     <span className="text-xs font-mono text-indigo-400">● USER IDENTIFIED</span>
                 </div>
-                <h1 className="text-4xl md:text-5xl font-bold tracking-tighter mb-4 text-white">
+                <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tighter mb-4 text-white">
                     Welcome back, Agent.
                 </h1>
-                <p className="text-gray-400 max-w-xl mx-auto">
+                <p className="text-gray-400 max-w-xl mx-auto text-sm sm:text-base">
                     Resume profiles detected in local cache. Select a profile to continue or upload a new mission file.
                 </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-                <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 w-full">
+                <div className="space-y-3 sm:space-y-4">
                     <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2 ml-1">Recent Profiles</h3>
                     {existingProfiles.slice(0, 3).map(profile => (
                         <button
                             key={profile.id}
                             onClick={() => handleContinueProfile(profile.id)}
                             disabled={activatingProfileId !== null}
-                            className={`w-full flex items-center justify-between p-4 bg-[#1A1A1A] border border-gray-800 rounded-xl hover:border-indigo-500/50 hover:bg-[#222] transition-all group text-left ${activatingProfileId === profile.id ? 'border-indigo-500 bg-[#222]' : ''}`}
+                            className={`w-full flex items-center justify-between p-3 sm:p-4 bg-[#1A1A1A] border border-gray-800 rounded-xl hover:border-indigo-500/50 hover:bg-[#222] transition-all group text-left ${activatingProfileId === profile.id ? 'border-indigo-500 bg-[#222]' : ''}`}
                         >
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-indigo-900/20 rounded-lg text-indigo-400 group-hover:scale-110 transition-transform">
-                                    {activatingProfileId === profile.id ? <Loader2 size={20} className="animate-spin" /> : <User size={20} />}
+                            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                                <div className="p-2 sm:p-3 bg-indigo-900/20 rounded-lg text-indigo-400 group-hover:scale-110 transition-transform flex-shrink-0">
+                                    {activatingProfileId === profile.id ? <Loader2 size={18} className="animate-spin" /> : <User size={18} />}
                                 </div>
-                                <div>
-                                    <h4 className="font-medium text-gray-200 group-hover:text-white">{profile.data.personalInfo.fullName || profile.name}</h4>
+                                <div className="min-w-0">
+                                    <h4 className="font-medium text-gray-200 group-hover:text-white truncate">{profile.data.personalInfo.fullName || profile.name}</h4>
                                     <p className="text-xs text-gray-500">Last updated: {new Date(profile.updatedAt).toLocaleDateString()}</p>
                                 </div>
                             </div>
-                            <ArrowRight size={18} className="text-gray-600 group-hover:text-indigo-400 transform group-hover:translate-x-1 transition-all" />
+                            <ArrowRight size={18} className="text-gray-600 group-hover:text-indigo-400 transform group-hover:translate-x-1 transition-all flex-shrink-0 ml-2" />
                         </button>
                     ))}
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                     <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2 ml-1">Other Actions</h3>
 
                     <button
                         onClick={() => setShowUpload(true)}
-                        className="w-full flex items-center gap-4 p-4 bg-[#1A1A1A] border border-gray-800 rounded-xl hover:border-green-500/50 hover:bg-[#222] transition-all group text-left"
+                        className="w-full flex items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-[#1A1A1A] border border-gray-800 rounded-xl hover:border-green-500/50 hover:bg-[#222] transition-all group text-left"
                     >
-                        <div className="p-3 bg-green-900/20 rounded-lg text-green-400 group-hover:scale-110 transition-transform">
-                            <Upload size={20} />
+                        <div className="p-2 sm:p-3 bg-green-900/20 rounded-lg text-green-400 group-hover:scale-110 transition-transform">
+                            <Upload size={18} />
                         </div>
                         <div>
                             <h4 className="font-medium text-gray-200 group-hover:text-white">Upload New Resume</h4>
@@ -227,10 +266,10 @@ export const HeroRoaster: React.FC<HeroRoasterProps> = ({ onScanComplete, onProf
 
                     <button
                         onClick={handleStartScratch}
-                        className="w-full flex items-center gap-4 p-4 bg-[#1A1A1A] border border-gray-800 rounded-xl hover:border-purple-500/50 hover:bg-[#222] transition-all group text-left"
+                        className="w-full flex items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-[#1A1A1A] border border-gray-800 rounded-xl hover:border-purple-500/50 hover:bg-[#222] transition-all group text-left"
                     >
-                        <div className="p-3 bg-purple-900/20 rounded-lg text-purple-400 group-hover:scale-110 transition-transform">
-                            <PlusCircle size={20} />
+                        <div className="p-2 sm:p-3 bg-purple-900/20 rounded-lg text-purple-400 group-hover:scale-110 transition-transform">
+                            <PlusCircle size={18} />
                         </div>
                         <div>
                             <h4 className="font-medium text-gray-200 group-hover:text-white">Create from Scratch</h4>
@@ -244,21 +283,21 @@ export const HeroRoaster: React.FC<HeroRoasterProps> = ({ onScanComplete, onProf
 
     const renderScanner = () => (
         <>
-            <div className="relative z-10 text-center mb-12 max-w-3xl animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="relative z-10 text-center mb-8 sm:mb-12 max-w-3xl animate-in fade-in slide-in-from-top-4 duration-500 px-4">
                 <div className="inline-block px-3 py-1 mb-4 border border-green-500/30 bg-green-900/10 rounded-full">
                     <span className="text-xs font-mono text-green-400">● SYSTEM ONLINE</span>
                 </div>
-                <h1 className="text-5xl md:text-7xl font-bold tracking-tighter mb-6 bg-gradient-to-br from-white to-gray-500 bg-clip-text text-transparent">
+                <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter mb-4 sm:mb-6 bg-gradient-to-br from-white to-gray-500 bg-clip-text text-transparent">
                     Resume.optimize( )
                 </h1>
-                <h2 className="text-lg md:text-xl text-gray-400 font-light font-mono max-w-2xl mx-auto">
+                <h2 className="text-base sm:text-lg md:text-xl text-gray-400 font-light font-mono max-w-2xl mx-auto">
                     The only ATS-compliant builder verified against Greenhouse & Lever algorithms.
-                    <br /><span className="text-gray-500">Parse, score, and fix your profile in seconds.</span>
+                    <br className="hidden sm:block" /><span className="text-gray-500">Parse, score, and fix your profile in seconds.</span>
                 </h2>
                 {existingProfiles.length > 0 && (
                     <button
                         onClick={() => setShowUpload(false)}
-                        className="mt-6 text-sm text-gray-500 hover:text-white underline transition-colors"
+                        className="mt-4 sm:mt-6 text-sm text-gray-500 hover:text-white underline transition-colors"
                     >
                         ← Back to Profiles
                     </button>
@@ -266,7 +305,7 @@ export const HeroRoaster: React.FC<HeroRoasterProps> = ({ onScanComplete, onProf
             </div>
 
             <div
-                className={`relative z-10 w-full max-w-2xl transition-all duration-300 transform ${scanState === 'complete' ? 'scale-95 opacity-50 blur-sm' : 'scale-100 opacity-100'
+                className={`relative z-10 w-full max-w-2xl px-4 transition-all duration-300 transform ${scanState === 'complete' ? 'scale-95 opacity-50 blur-sm' : 'scale-100 opacity-100'
                     }`}
             >
                 {scanState === 'idle' && (
@@ -274,7 +313,7 @@ export const HeroRoaster: React.FC<HeroRoasterProps> = ({ onScanComplete, onProf
                         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                         onDragLeave={() => setIsDragging(false)}
                         onDrop={onDrop}
-                        className={`border-2 border-dashed rounded-xl h-64 flex flex-col items-center justify-center cursor-pointer transition-colors bg-[#1A1A1A] ${isDragging ? 'border-green-500 bg-green-900/10' : 'border-gray-700 hover:border-gray-500'
+                        className={`border-2 border-dashed rounded-xl h-48 sm:h-64 flex flex-col items-center justify-center cursor-pointer transition-colors bg-[#1A1A1A] ${isDragging ? 'border-green-500 bg-green-900/10' : 'border-gray-700 hover:border-gray-500'
                             }`}
                     >
                         <input
@@ -283,17 +322,17 @@ export const HeroRoaster: React.FC<HeroRoasterProps> = ({ onScanComplete, onProf
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                             onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
                         />
-                        <div className="p-4 bg-gray-800 rounded-full mb-4">
-                            <Upload className={`w-8 h-8 ${isDragging ? 'text-green-400' : 'text-gray-400'}`} />
+                        <div className="p-3 sm:p-4 bg-gray-800 rounded-full mb-3 sm:mb-4">
+                            <Upload className={`w-6 h-6 sm:w-8 sm:h-8 ${isDragging ? 'text-green-400' : 'text-gray-400'}`} />
                         </div>
-                        <p className="text-xl font-medium text-gray-300">Drop your PDF here to scan</p>
-                        <p className="text-sm text-gray-500 mt-2 font-mono">Supports generic PDF formats</p>
+                        <p className="text-lg sm:text-xl font-medium text-gray-300 text-center px-4">Drop your PDF here to scan</p>
+                        <p className="text-xs sm:text-sm text-gray-500 mt-2 font-mono">Supports generic PDF formats</p>
                     </div>
                 )}
 
                 {scanState === 'scanning' && (
-                    <div className="border border-green-500/50 rounded-xl h-64 bg-black p-6 font-mono text-sm overflow-hidden shadow-[0_0_30px_rgba(0,255,148,0.1)]">
-                        <div className="flex items-center gap-2 mb-4 border-b border-gray-800 pb-2">
+                    <div className="border border-green-500/50 rounded-xl h-48 sm:h-64 bg-black p-4 sm:p-6 font-mono text-xs sm:text-sm overflow-hidden shadow-[0_0_30px_rgba(0,255,148,0.1)]">
+                        <div className="flex items-center gap-2 mb-3 sm:mb-4 border-b border-gray-800 pb-2">
                             <Cpu className="w-4 h-4 text-green-500 animate-pulse" />
                             <span className="text-green-500">ATS_SCANNER_RUNNING...</span>
                         </div>

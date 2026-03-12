@@ -3,21 +3,33 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
-    "lib": ["ES2022"],
+    "baseUrl": ".",
+    "lib": [
+      "ES2022"
+    ],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "target": "ES2022",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
     "paths": {
-      "@careerflow/shared": ["../../packages/shared/src"],
-      "@careerflow/shared/*": ["../../packages/shared/src/*"]
+      "@resumind/shared": [
+        "../../packages/shared/dist"
+      ],
+      "@resumind/shared/*": [
+        "../../packages/shared/dist/*"
+      ]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
-  "references": [
-    { "path": "../../packages/shared" }
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
   ]
 }

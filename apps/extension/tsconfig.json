@@ -8,8 +8,8 @@
     "moduleResolution": "bundler",
     "noEmit": true,
     "paths": {
-      "@careerflow/shared": ["../../packages/shared/src"],
-      "@careerflow/shared/*": ["../../packages/shared/src/*"]
+      "@resumind/shared": ["../../packages/shared/src"],
+      "@resumind/shared/*": ["../../packages/shared/src/*"]
     }
   },
   "include": ["src/**/*"],

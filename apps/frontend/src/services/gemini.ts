@@ -2,7 +2,7 @@ import type { TailorResponse, MatchScoreResponse, Resume } from '../types';
 import { fetchWithAuth } from './api';
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { formatResumeForToon as _formatResumeForToon, toToon as _toToon, SYSTEM_INSTRUCTIONS as _SYSTEM_INSTRUCTIONS, PROMPT_TEMPLATES as _PROMPT_TEMPLATES } from '@careerflow/shared';
+import { formatResumeForToon as _formatResumeForToon, toToon as _toToon, SYSTEM_INSTRUCTIONS as _SYSTEM_INSTRUCTIONS, PROMPT_TEMPLATES as _PROMPT_TEMPLATES } from '@resumind/shared';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 

@@ -150,22 +150,55 @@ router.get('/pending', async (req: Request, res: Response) => {
   }
 });
 
-// PATCH /api/autofill/pending/:id/complete - Mark autofill as completed
+// PATCH /api/autofill/pending/:id/complete - Mark autofill as completed & create application
 router.patch('/pending/:id/complete', async (req: Request, res: Response) => {
   try {
     const userId = req.userId;
     const { id } = req.params;
 
-    const { error } = await getSupabase()
+    // 1. Fetch to get job details to insert into applications
+    const { data: autofill, error: fetchErr } = await getSupabase()
+      .from('pending_autofills')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchErr || !autofill) {
+      res.status(404).json({ error: 'Autofill not found' });
+      return;
+    }
+
+    // 2. Mark as completed
+    const { error: updateErr } = await getSupabase()
       .from('pending_autofills')
       .update({ status: 'completed' })
       .eq('id', id)
       .eq('user_id', userId);
 
-    if (error) {
-      console.error('Error completing autofill:', error);
+    if (updateErr) {
+      console.error('Error completing autofill:', updateErr);
       res.status(500).json({ error: 'Failed to update autofill status' });
       return;
+    }
+
+    // 3. Persist to User's Application Tracker automatically
+    const { error: insertAppErr } = await getSupabase()
+      .from('applications')
+      .insert({
+        user_id: userId,
+        company: autofill.company || 'Unknown Company',
+        job_title: autofill.job_title || 'Unknown Title',
+        job_url: autofill.job_url,
+        status: 'applied',
+        applied_date: new Date().toISOString(),
+        resume_version: autofill.profile_id,
+        timeline: [{ status: 'applied', date: new Date().toISOString(), note: 'Auto-filled via CareerFlow Extension' }]
+      });
+
+    if (insertAppErr) {
+      console.error('Error creating application record:', insertAppErr);
+      // Non-fatal error, but we log it
     }
 
     res.json({ success: true });

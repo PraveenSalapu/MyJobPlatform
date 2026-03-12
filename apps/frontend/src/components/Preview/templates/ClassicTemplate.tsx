@@ -1,5 +1,6 @@
 import { useResume } from '../../../context/ResumeContext';
 import type { Resume } from '../../../types';
+import { TEMPLATE_DEFAULTS } from '../../../utils/pdfConstants';
 
 export const ClassicTemplate = ({ resume: propResume }: { resume?: Resume }) => {
     const context = useResume();
@@ -7,13 +8,9 @@ export const ClassicTemplate = ({ resume: propResume }: { resume?: Resume }) => 
 
     const { personalInfo, summary, experience, education, skills, projects, certifications, layout } = resume;
 
+    // Default values from shared constants (with web-safe font stack)
     const defaultLayout = {
-        fontSize: 10,
-        lineHeight: 1.4,
-        sectionSpacing: 5,
-        nameSize: 20,
-        contactSize: 9,
-        margin: { top: 15, right: 15, bottom: 15, left: 15 },
+        ...TEMPLATE_DEFAULTS.classic,
         fontFamily: 'Times New Roman, Times, serif'
     };
 

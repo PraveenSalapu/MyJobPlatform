@@ -1,3 +1,8 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
 # Logs
 logs
 *.log
@@ -7,24 +12,60 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
+# Build Output
 dist
 dist-ssr
-*.local
+build
+out
+.output
+.vercel
+.turbo
 
-# Editor directories and files
+# Coverage / Testing
+coverage/
+.nyc_output
+playwright-report/
+blob-report/
+test-results/
+
+# Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.local
+# Exclude example env files from being ignored
+!.env.example
+!.env.production.example
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor / IDE
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.swp
 
-# Environment variables
-.env
-.env.*
-n
-ul
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Caches
+.eslintcache
+.stylelintcache
+.npm

@@ -1,18 +1,11 @@
 import { Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { Resume } from '../../../types';
 import { renderPDFSection } from '../SectionRenderer';
+import { MM_TO_PT, TEMPLATE_DEFAULTS } from '../../../utils/pdfConstants';
 
 export const ModernPDF = ({ resume }: { resume: Resume }) => {
-    // Default values if layout is missing or legacy
-    const defaultLayout = {
-        fontSize: 10,
-        lineHeight: 1.4,
-        sectionSpacing: 5,
-        nameSize: 24,
-        contactSize: 10,
-        margin: { top: 15, right: 15, bottom: 15, left: 15 },
-        fontFamily: 'Helvetica'
-    };
+    // Default values from shared constants
+    const defaultLayout = TEMPLATE_DEFAULTS.modern;
 
     const layout = resume.layout && typeof resume.layout.fontSize === 'number'
         ? { ...defaultLayout, ...resume.layout }
@@ -23,41 +16,38 @@ export const ModernPDF = ({ resume }: { resume: Resume }) => {
         .filter(s => s.isVisible)
         .sort((a, b) => a.order - b.order);
 
-    // Convert mm to pt for margins (1mm = 2.835pt)
-    const mmToPt = 2.835;
-    const marginTop = (layout.margin?.top || 15) * mmToPt;
-    const marginRight = (layout.margin?.right || 15) * mmToPt;
-    const marginBottom = (layout.margin?.bottom || 15) * mmToPt;
-    const marginLeft = (layout.margin?.left || 15) * mmToPt;
+    // Convert mm to pt for margins using precise conversion
+    const marginTop = (layout.margin?.top || 15) * MM_TO_PT;
+    const marginRight = (layout.margin?.right || 15) * MM_TO_PT;
+    const marginBottom = (layout.margin?.bottom || 15) * MM_TO_PT;
+    const marginLeft = (layout.margin?.left || 15) * MM_TO_PT;
+
+    // Section spacing in pt
+    const sectionSpacingPt = (layout.sectionSpacing || 5) * MM_TO_PT;
 
     // Dynamic styles based on layout
+    const baseFontSize = layout.fontSize;
     const nameSize = layout.nameSize;
     const contactSize = layout.contactSize;
 
-    const pageStyle = {
-        paddingTop: marginTop,
-        paddingRight: marginRight,
-        paddingBottom: marginBottom,
-        paddingLeft: marginLeft,
-        fontSize: layout.fontSize,
-        lineHeight: layout.lineHeight,
-        fontFamily: layout.fontFamily || 'Helvetica', // Dynamic Font
-        color: '#333',
-    };
-
-    const headerStyle = {
-        marginBottom: (layout.sectionSpacing || 5) * mmToPt,
-        borderBottomWidth: 2,
-        borderBottomColor: '#1e293b',
-        borderBottomStyle: 'solid' as const,
-        paddingBottom: 10,
-    };
-
-    const sectionStyle = {
-        marginBottom: (layout.sectionSpacing || 5) * mmToPt,
-    };
-
     const styles = StyleSheet.create({
+        page: {
+            paddingTop: marginTop,
+            paddingRight: marginRight,
+            paddingBottom: marginBottom,
+            paddingLeft: marginLeft,
+            fontSize: baseFontSize,
+            lineHeight: layout.lineHeight,
+            fontFamily: layout.fontFamily || 'Helvetica',
+            color: '#333',
+        },
+        header: {
+            marginBottom: sectionSpacingPt,
+            borderBottomWidth: 2,
+            borderBottomColor: '#1e293b',
+            borderBottomStyle: 'solid',
+            paddingBottom: 10,
+        },
         name: {
             fontSize: nameSize,
             fontWeight: 'bold',
@@ -73,8 +63,11 @@ export const ModernPDF = ({ resume }: { resume: Resume }) => {
             fontSize: contactSize,
             color: '#475569',
         },
+        section: {
+            marginBottom: sectionSpacingPt,
+        },
         sectionTitle: {
-            fontSize: layout.fontSize + 2,
+            fontSize: baseFontSize + 2,
             fontWeight: 'bold',
             color: '#0f172a',
             marginBottom: 8,
@@ -95,19 +88,23 @@ export const ModernPDF = ({ resume }: { resume: Resume }) => {
             marginBottom: 2,
         },
         position: {
-            fontSize: layout.fontSize + 1,
+            fontSize: baseFontSize + 1,
             fontWeight: 'bold',
             color: '#1e293b',
         },
         date: {
-            fontSize: layout.fontSize - 1,
+            fontSize: baseFontSize - 1,
             color: '#475569',
         },
         company: {
-            fontSize: layout.fontSize,
+            fontSize: baseFontSize,
             fontWeight: 'bold',
             color: '#334155',
             marginBottom: 2,
+        },
+        location: {
+            fontSize: baseFontSize - 1,
+            color: '#475569',
         },
         bullet: {
             flexDirection: 'row',
@@ -116,12 +113,12 @@ export const ModernPDF = ({ resume }: { resume: Resume }) => {
         },
         bulletPoint: {
             width: 10,
-            fontSize: layout.fontSize,
+            fontSize: baseFontSize,
             color: '#334155',
         },
         bulletText: {
             flex: 1,
-            fontSize: layout.fontSize,
+            fontSize: baseFontSize,
             color: '#334155',
         },
         skillsContainer: {
@@ -137,12 +134,12 @@ export const ModernPDF = ({ resume }: { resume: Resume }) => {
         skillCategory: {
             fontWeight: 'bold',
             width: 100,
-            fontSize: layout.fontSize,
+            fontSize: baseFontSize,
             color: '#1e293b',
         },
         skillList: {
             flex: 1,
-            fontSize: layout.fontSize,
+            fontSize: baseFontSize,
             color: '#334155',
         },
     });
@@ -150,8 +147,8 @@ export const ModernPDF = ({ resume }: { resume: Resume }) => {
     const pageSize = resume.pageSize || 'A4';
 
     return (
-        <Page size={pageSize} style={pageStyle}>
-            <View style={headerStyle}>
+        <Page size={pageSize} style={styles.page}>
+            <View style={styles.header}>
                 <Text style={styles.name}>{resume.personalInfo.fullName}</Text>
                 <View style={styles.contact}>
                     {resume.personalInfo.email && <Text>{resume.personalInfo.email}</Text>}
@@ -163,7 +160,7 @@ export const ModernPDF = ({ resume }: { resume: Resume }) => {
             </View>
 
             {resume.summary && (
-                <View style={sectionStyle}>
+                <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Professional Summary</Text>
                     <Text style={{ color: '#334155' }}>{resume.summary}</Text>
                 </View>

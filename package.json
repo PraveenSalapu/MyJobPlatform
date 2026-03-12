@@ -1,24 +1,37 @@
 {
-  "name": "careerflow-monorepo",
+  "name": "resumind-monorepo",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @careerflow/frontend dev",
-    "dev:backend": "pnpm --filter @careerflow/backend dev",
-    "dev:extension": "pnpm --filter @careerflow/extension dev",
+    "dev": "pnpm --filter @resumind/frontend dev",
+    "dev:backend": "pnpm --filter @resumind/backend dev",
+    "dev:extension": "pnpm --filter @resumind/extension dev",
     "dev:all": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
-    "build:shared": "pnpm --filter @careerflow/shared build",
-    "build:frontend": "pnpm --filter @careerflow/frontend build",
-    "build:backend": "pnpm --filter @careerflow/backend build",
-    "build:extension": "pnpm --filter @careerflow/extension build",
+    "build:shared": "pnpm --filter @resumind/shared build",
+    "build:frontend": "pnpm --filter @resumind/frontend build",
+    "build:backend": "pnpm --filter @resumind/backend build",
+    "build:extension": "pnpm --filter @resumind/extension build",
     "lint": "pnpm -r lint",
-    "preview": "pnpm --filter @careerflow/frontend preview",
-    "clean": "pnpm -r exec rm -rf node_modules dist"
+    "preview": "pnpm --filter @resumind/frontend preview",
+    "clean": "pnpm -r exec rm -rf node_modules dist",
+    "heroku-postbuild": "pnpm install && pnpm build:shared && pnpm build:backend"
+  },
+  "license": "ISC",
+  "engines": {
+    "node": "20.x"
   },
   "devDependencies": {
     "tsx": "^4.21.0",
     "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "@google/genai": "^1.34.0",
+    "@supabase/supabase-js": "^2.89.0",
+    "@types/cheerio": "^1.0.0",
+    "cheerio": "^1.1.2",
+    "dotenv": "^17.2.3",
+    "rss-parser": "^3.13.0"
   }
 }
